@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>李无邪欢乐牌局</title>
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<h1>♠ 李无邪欢乐牌局 ♥</h1>
+
+<!-- 菜单 -->
+<div class="menu" id="menu">
+  <h2>加入对局</h2>
+  <label>你的昵称</label>
+  <input id="nick" maxlength="10" placeholder="输入昵称">
+  <div class="row">
+    <button class="btn-call" id="btnOffline">单机练习（AI 陪练）</button>
+  </div>
+  <div class="row">
+    <button class="btn-raise" id="btnCreate">创建房间</button>
+    <button class="btn-fold" id="btnJoin">加入房间</button>
+  </div>
+  <label style="margin-top:14px">房间码（加入时填写）</label>
+  <input id="roomCode" maxlength="4" placeholder="4 位房间码">
+  <div id="connMsg" class="conn-msg"></div>
+  <div class="hint">联机需用源码包启动本地 Node 服务（npm install && npm start）后访问 http://localhost:3000，好友凭房间码入座；空位可添加 AI 补位。纯娱乐虚拟积分，仅供练习。</div>
+</div>
+
+<!-- 牌桌 -->
+<div class="wrap" id="tableWrap" style="display:none">
+  <div class="maincol">
+    <div class="table" id="table">
+      <div class="center">
+        <div class="pot" id="pot">奖池 0</div>
+        <div class="message" id="message"></div>
+        <div class="community" id="community"></div>
+        <div class="stage" id="stage">准备开始</div>
+      </div>
+      <div class="controls" id="controls"></div>
+      <div class="result-overlay" id="resultOverlay" style="display:none"></div>
+    </div>
+  </div>
+
+  <div class="side">
+    <div class="panel">
+      <h2>音效与音乐</h2>
+      <div class="audio-row">
+        <span>背景音乐</span>
+        <select id="bgmSelect">
+          <option value="0">关闭</option>
+          <option value="1" selected>欢乐节拍</option>
+          <option value="2">喜庆锣鼓</option>
+          <option value="3">轻快市集</option>
+          <option value="4">幸运嘉年华</option>
+          <option value="5">愉悦小调</option>
+          <option value="6">欢乐快板</option>
+          <option value="7">民谣轻快</option>
+          <option value="8">热闹锣鼓</option>
+        </select>
+      </div>
+      <div class="audio-row">
+        <label class="switch"><input type="checkbox" id="voiceToggle" checked> 语音播报</label>
+        <label class="switch"><input type="checkbox" id="sfxToggle" checked> 操作音效</label>
+      </div>
+      <div class="audio-row">
+        <span>音量</span>
+        <input type="range" id="volume" min="0" max="100" value="70">
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="roomcode-side" id="roomCodeSide" style="display:none"></div>
+      <div class="invite" id="inviteRow" style="display:none">
+        <input id="inviteLink" readonly>
+        <button class="secondary" id="btnCopy" style="margin-top:0">复制邀请</button>
+      </div>
+      <button class="secondary" id="btnNewHand">开始新的一手</button>
+      <button class="secondary" id="btnAddBot" style="display:none">添加 AI 补位</button>
+      <button class="secondary" id="btnExport">导出对账账本 JSON</button>
+    </div>
+
+    <div class="panel">
+      <h2>对局日志</h2>
+      <div class="log" id="log"></div>
+      <div class="recon-line" id="reconLine"></div>
+    </div>
+
+    <div class="panel">
+      <h2>牌型大小（由大到小）</h2>
+      <div class="ranklist">
+        <div><span>同花顺</span><span>8</span></div>
+        <div><span>四条</span><span>7</span></div>
+        <div><span>葫芦</span><span>6</span></div>
+        <div><span>同花</span><span>5</span></div>
+        <div><span>顺子</span><span>4</span></div>
+        <div><span>三条</span><span>3</span></div>
+        <div><span>两对</span><span>2</span></div>
+        <div><span>一对</span><span>1</span></div>
+        <div><span>高牌</span><span>0</span></div>
+      </div>
+    </div>
+    <div class="panel rules">
+      <h2>玩法说明</h2>
+      <ul>
+        <li>每人 2 张底牌，桌面 5 张公共牌，7 选 5 比大小。</li>
+        <li>四轮行动：翻牌前 → 翻牌 → 转牌 → 河牌。</li>
+        <li>支持主池/边池：全下玩家只能赢自己有资格的奖池。</li>
+        <li>每手结束后台自动对账：积分守恒、奖池清零、派奖资格与牌型。</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<script src="/src/game-core.js"></script>
+<script src="/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,16 @@
+{
+  "name": "card-table-app",
+  "version": "1.0.0",
+  "description": "休闲卡牌对局：单机 AI 陪练 + WebSocket 房间联机 + 自动对账",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node test/core.test.cjs"
+  },
+  "keywords": ["card-game", "websocket", "board-game"],
+  "license": "MIT",
+  "engines": { "node": ">=18" },
+  "dependencies": {
+    "ws": "^8.23.0"
+  }
+}

@@ -1,0 +1,195 @@
+:root{
+  --felt:#1d7148; --felt-dark:#0f3d26; --gold:#e8c15a; --gold-soft:#f3d88a;
+  --text:#f4f1e8; --red:#d64545; --card-bg:#fff; --muted:#bcd6c8;
+  --glass:rgba(0,0,0,.38); --line:rgba(255,255,255,.12);
+  --shadow:0 8px 24px rgba(0,0,0,.35);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{
+  font-family:"Noto Sans SC","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
+  background:radial-gradient(ellipse at 50% 20%,#238052,#0a2f1d 75%);
+  color:var(--text); min-height:100vh; padding:14px;
+}
+h1{
+  font-size:21px;text-align:center;letter-spacing:3px;margin-bottom:12px;
+  background:linear-gradient(180deg,var(--gold-soft),var(--gold));
+  -webkit-background-clip:text;background-clip:text;color:transparent;
+  text-shadow:0 2px 10px rgba(0,0,0,.3);
+}
+.wrap{max-width:1120px;margin:0 auto;display:grid;grid-template-columns:1fr 320px;gap:14px}
+@media(max-width:900px){.wrap{grid-template-columns:1fr}}
+.maincol{display:flex;flex-direction:column;gap:14px}
+
+/* 菜单 */
+.menu{max-width:420px;margin:6vh auto;background:var(--glass);border:1px solid var(--line);border-radius:22px;padding:28px;box-shadow:var(--shadow);backdrop-filter:blur(6px)}
+.menu h2{color:var(--gold);margin-bottom:16px;text-align:center;letter-spacing:2px}
+.menu label{font-size:13px;color:var(--muted);display:block;margin:10px 0 4px}
+.menu input{width:100%;padding:11px;border-radius:10px;border:1px solid var(--line);font-size:15px;background:rgba(255,255,255,.92);color:#111}
+.menu .row{display:flex;gap:10px;margin-top:16px;flex-wrap:wrap}
+.menu button{flex:1;min-width:120px}
+.hint{font-size:12px;color:var(--muted);margin-top:12px;line-height:1.7}
+.conn-msg{font-size:13px;font-weight:700;color:var(--red);margin-top:10px;line-height:1.6;min-height:18px}
+.conn-msg.ok{color:#6fdc8c}
+
+/* 牌桌 */
+.table{
+  position:relative;
+  background:radial-gradient(ellipse at center,var(--felt),var(--felt-dark) 78%);
+  border:10px solid #5a3a22;border-radius:120px;min-height:540px;
+  box-shadow:inset 0 0 60px rgba(0,0,0,.45),inset 0 0 120px rgba(0,0,0,.25),0 12px 32px rgba(0,0,0,.45);
+}
+.seat{
+  position:absolute;width:160px;transform:translate(-50%,-50%);
+  background:var(--glass);border:2px solid transparent;border-radius:16px;padding:8px;text-align:center;
+  transition:opacity .25s,border-color .25s,box-shadow .25s;backdrop-filter:blur(4px);
+}
+.seat.active{border-color:var(--gold);box-shadow:0 0 18px rgba(232,193,90,.55)}
+.seat.allin{border-color:var(--red)}
+.seat.folded{opacity:.55;filter:grayscale(.6)}
+.seat.folded .name{text-decoration:line-through;color:#bbb}
+.seat .name{font-size:14px;font-weight:800}
+.seat .chips{font-size:14px;font-weight:800;color:var(--gold);margin:3px 0;text-shadow:0 1px 2px rgba(0,0,0,.5)}
+.seat .bet{font-size:13px;font-weight:700;color:#ffd9a0;min-height:18px}
+.seat .tag{display:inline-block;font-size:11px;font-weight:800;border-radius:6px;padding:2px 8px;margin:2px 2px 0}
+.tag.dealer{background:var(--gold);color:#3a2a00}
+.tag.sb{background:#4a90d9;color:#fff}
+.tag.bb{background:var(--red);color:#fff}
+.tag.allin{background:#b23a3a;color:#fff}
+.tag.bot{background:#00000055;color:#ddd}
+.fold-badge{display:inline-block;margin-top:5px;font-size:13px;font-weight:800;color:#fff;background:#5b6068;border:2px solid #9aa0a8;border-radius:8px;padding:3px 10px;letter-spacing:1px}
+
+/* 座位动作气泡 */
+.action-bubble{position:absolute;left:50%;top:-14px;transform:translateX(-50%);white-space:nowrap;font-size:17px;font-weight:900;padding:6px 14px;border-radius:12px;color:#fff;box-shadow:0 4px 12px rgba(0,0,0,.45);z-index:30;animation:bubblePop 1.6s ease forwards}
+.action-bubble.b-call{background:#2f9e63}
+.action-bubble.b-raise{background:#e08a2e}
+.action-bubble.b-fold{background:#7a7f88}
+.action-bubble.b-check{background:#4a90d9}
+.action-bubble.b-allin{background:var(--red)}
+.action-bubble.b-blind{background:#6b5bb0}
+.action-bubble.b-win{background:var(--gold);color:#3a2a00}
+@keyframes bubblePop{0%{opacity:0;transform:translate(-50%,10px) scale(.7)}15%{opacity:1;transform:translate(-50%,0) scale(1.08)}30%{transform:translate(-50%,0) scale(1)}75%{opacity:1}100%{opacity:0;transform:translate(-50%,-18px) scale(.95)}}
+
+/* 结算浮层 */
+.result-overlay{position:absolute;inset:0;z-index:40;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.55);border-radius:120px}
+.result-panel{background:linear-gradient(160deg,#234a35,#14321f);border:2px solid var(--gold);border-radius:20px;padding:24px 30px;min-width:300px;max-width:420px;text-align:center;box-shadow:0 16px 40px rgba(0,0,0,.5)}
+.result-title{font-size:30px;font-weight:900;letter-spacing:3px;margin-bottom:6px}
+.result-title.win{color:#6fdc8c}.result-title.lose{color:var(--red)}.result-title.draw{color:var(--gold)}
+.result-delta{font-size:20px;font-weight:800;margin-bottom:14px}
+.result-delta.pos{color:#6fdc8c}.result-delta.neg{color:var(--red)}
+.result-rows{display:flex;flex-direction:column;gap:8px;margin-bottom:18px;text-align:left}
+.result-row{display:flex;justify-content:space-between;font-size:14px;background:rgba(255,255,255,.08);border-radius:10px;padding:8px 12px}
+.result-row .r-pos{font-weight:800}.result-row .r-pos.pos{color:#6fdc8c}.result-row .r-pos.neg{color:var(--red)}
+.btn-continue{background:linear-gradient(180deg,#37b571,#258a54);font-size:17px;padding:12px 30px;border-radius:12px}
+.cards{display:flex;gap:4px;justify-content:center;margin:6px 0;min-height:64px}
+.card{width:44px;height:62px;background:var(--card-bg);border-radius:7px;color:#111;display:flex;flex-direction:column;justify-content:center;align-items:center;font-weight:700;box-shadow:0 2px 6px rgba(0,0,0,.4);font-size:16px;line-height:1.1}
+.card.red{color:var(--red)}
+.card.back{background:repeating-linear-gradient(45deg,#7a2b2b,#7a2b2b 6px,#5c1f1f 6px,#5c1f1f 12px)}
+.card .s{font-size:14px}
+.seat .handinfo{font-size:11px;color:var(--muted);min-height:14px}
+.seat.winner .cards .card{outline:2px solid var(--gold);outline-offset:1px}
+
+.center{position:absolute;left:50%;top:36%;transform:translate(-50%,-50%);text-align:center}
+.pot{font-size:17px;color:var(--gold);font-weight:800;margin-bottom:8px;letter-spacing:1px}
+.community{display:flex;gap:6px;justify-content:center;min-height:70px}
+.stage{margin-top:8px;font-size:13px;color:var(--muted)}
+.roomcode{margin-top:6px;font-size:13px;color:var(--gold)}
+.roomcode-side{font-size:15px;font-weight:800;color:var(--gold);margin-bottom:8px;letter-spacing:2px}
+.message{margin-top:8px;font-size:15px;color:var(--gold);min-height:22px;font-weight:800;letter-spacing:1px}
+
+/* 操作区：桌面端可换行，移动端强制单行 */
+.controls{
+  position:absolute;left:50%;bottom:12px;transform:translateX(-50%);z-index:20;
+  display:flex;gap:10px;align-items:center;background:var(--glass);
+  padding:10px 14px;border-radius:16px;flex-wrap:wrap;justify-content:center;box-shadow:var(--shadow);
+}
+button{
+  border:none;border-radius:11px;padding:10px 16px;font-size:14px;font-weight:800;cursor:pointer;color:#fff;
+  box-shadow:0 3px 8px rgba(0,0,0,.3);transition:filter .15s,transform .1s;
+}
+button:hover{filter:brightness(1.1)}
+button:active{transform:translateY(1px)}
+.btn-fold{background:linear-gradient(180deg,#9aa0a8,#767b83)}
+.btn-call{background:linear-gradient(180deg,#37b571,#258a54)}
+.btn-raise{background:linear-gradient(180deg,#f09a3c,#cf7420)}
+.btn-allin{background:linear-gradient(180deg,#e05b5b,#b23232)}
+button:disabled{opacity:.35;cursor:not-allowed}
+.raise-row{display:flex;gap:8px;align-items:center}
+input[type=number]{width:80px;padding:8px;border-radius:8px;border:none;font-size:14px}
+
+.side{display:flex;flex-direction:column;gap:14px}
+.panel{background:var(--glass);border:1px solid var(--line);border-radius:16px;padding:12px;backdrop-filter:blur(4px)}
+.panel h2{font-size:14px;color:var(--gold);margin-bottom:8px;letter-spacing:1px}
+.log{height:210px;overflow-y:auto;font-size:12.5px;line-height:1.8;color:var(--muted)}
+.log div b{color:#fff}
+.recon-line{margin-top:8px;font-size:12px;border-top:1px solid var(--line);padding-top:8px}
+.recon-line .ok{color:#6fdc8c}.recon-line .bad{color:var(--red)}
+.check{font-size:11.5px;line-height:1.7;color:var(--muted)}
+.rules{font-size:12px;line-height:1.8;color:var(--muted)}
+.rules li{margin-left:16px}
+.ranklist{font-size:12px;line-height:1.8}
+.ranklist div{display:flex;justify-content:space-between}
+.ranklist span:last-child{color:var(--gold)}
+.secondary{background:#3a4a55;width:100%;margin-top:8px}
+.invite{display:flex;gap:8px;margin-top:8px}
+.invite input{flex:1;padding:8px;border-radius:8px;border:none}
+
+.audio-row{display:flex;align-items:center;gap:8px;margin:8px 0;font-size:13px;color:var(--muted)}
+.audio-row select,.audio-row input[type=range]{flex:1}
+.audio-row select{padding:7px;border-radius:8px;border:none;background:#fff;color:#111}
+.switch{display:flex;align-items:center;gap:6px;cursor:pointer}
+
+/* 移动端适配（竖屏） */
+@media(max-width:600px){
+  body{padding:8px}
+  h1{font-size:17px;letter-spacing:1px;margin-bottom:8px}
+  .wrap{gap:10px}
+  .table{min-height:460px;border-width:6px;border-radius:50px}
+  .center{top:33%}
+  .seat{width:112px;padding:6px}
+  .seat .name{font-size:12px}
+  .seat .chips{font-size:12px}
+  .seat .cards{min-height:48px;margin:4px 0}
+  .card{width:32px;height:46px;font-size:13px;border-radius:5px}
+  .card .s{font-size:11px}
+  .tag{font-size:9px;padding:1px 6px}
+  .fold-badge{font-size:11px;padding:2px 8px}
+
+  /* 操作按钮强制同一行，等分压缩，不换行 */
+  .controls{
+    flex-wrap:nowrap;gap:5px;padding:8px 8px;bottom:8px;width:calc(100% - 16px);
+    justify-content:space-between;max-width:430px;
+  }
+  .controls button{flex:1 1 0;padding:9px 2px;font-size:11.5px;min-width:0;white-space:nowrap}
+  .raise-row{flex:1.25;gap:4px;min-width:0}
+  .raise-row input{width:38px;padding:8px 2px;font-size:12px;min-width:0}
+  .raise-row button{flex:0 1 auto;padding:9px 6px}
+  .log{height:160px;font-size:12px}
+  .result-panel{min-width:250px;padding:18px 18px}
+  .result-title{font-size:24px}
+  .result-row{font-size:13px;padding:7px 10px}
+  .message{display:none}
+}
+
+/* 手机横屏：牌桌铺满，座位贴四边，侧栏收起，专注对局 */
+@media (orientation:landscape) and (max-height:520px){
+  body{padding:4px}
+  h1{display:none}
+  .wrap{grid-template-columns:1fr;gap:0}
+  .side{display:none}
+  .maincol{gap:0}
+  .table{min-height:calc(100vh - 8px);border-width:5px;border-radius:34px}
+  .center{top:40%}
+  .message{display:none}
+  .pot{font-size:15px;margin-bottom:4px}
+  .community{min-height:48px;gap:5px}
+  .stage{margin-top:4px;font-size:12px}
+  .seat{width:118px;padding:4px}
+  .seat .handinfo{display:none}
+  .seat .cards{min-height:38px;margin:3px 0}
+  .seat .name{font-size:12px}
+  .seat .chips{font-size:12px;margin:2px 0}
+  .seat .bet{min-height:15px;font-size:12px}
+  .card{width:28px;height:38px;font-size:12px;border-radius:5px}
+  .card .s{font-size:10px}
+  .controls{bottom:4px}
+}
