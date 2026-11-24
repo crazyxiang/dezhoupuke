@@ -25,7 +25,7 @@ function cnNum(n){const d=['零','一','二','三','四','五','六','七','八'
 
 const AudioSys={
   ctx:null,master:null,sfxGain:null,bgmGain:null,bgmTimer:null,bgmTrack:0,
-  lead:{step:0,next:0},bass:{step:0,next:0},sfxOn:true,voiceOn:true,zhVoice:null,
+  lead:{step:0,next:0},bass:{step:0,next:0},sfxOn:true,voiceOn:true,zhVoice:null,bgmEnabled:true,muted:false,
   voiceQueue:[],speaking:false,voiceUnlocked:false,voiceWarming:false,currentUtterance:null,
   ensure(){if(this.ctx){if(this.ctx.state==='suspended')this.ctx.resume();return;}const AC=window.AudioContext||window.webkitAudioContext;if(!AC)return;this.ctx=new AC();this.master=this.ctx.createGain();this.master.connect(this.ctx.destination);this.sfxGain=this.ctx.createGain();this.sfxGain.connect(this.master);this.bgmGain=this.ctx.createGain();this.bgmGain.gain.value=0.7;this.bgmGain.connect(this.master);this.volume();this.sfxVolume();try{this.ctx.resume();}catch(e){}},
   volume(){const raw=$('volume').value;const v=(raw===''||isNaN(+raw)?70:+raw)/100;if(this.master)this.master.gain.value=Math.max(0,Math.min(1,v));},
@@ -38,7 +38,7 @@ const AudioSys={
   sfx(name){if(!this.ctx)this.ensure();if(!this.ctx)return;if(this.ctx.state==='running'){this._play(name);return;}if(this.pendingSfx.length<16)this.pendingSfx.push(name);this.ctx.resume().then(()=>{if(this.ctx.state!=='running')return;const list=this.pendingSfx.splice(0);list.forEach(n=>this._play(n));}).catch(()=>{});},
   _play(name){if(!this.ctx||this.ctx.state!=='running')return;switch(name){case'deal':this.tone(1200,.06,{type:'triangle',vol:.5});break;case'blind':this.tone(520,.06,{type:'triangle',vol:.45});this.tone(480,.06,{type:'triangle',vol:.4,when:.07});break;case'check':this.tone(760,.07,{type:'sine',vol:.55});break;case'call':this.tone(620,.08,{type:'square',vol:.45});this.tone(840,.09,{type:'square',vol:.45,when:.08});break;case'raise':this.tone(500,.18,{type:'sawtooth',vol:.5,slide:920});break;case'fold':this.tone(420,.22,{type:'sawtooth',vol:.4,slide:150});break;case'allin':this.tone(440,.2,{type:'sawtooth',vol:.5,slide:880});this.tone(660,.24,{type:'square',vol:.45,when:.1});break;case'flip':this.tone(980,.06,{type:'triangle',vol:.5});break;case'flop':[72,76,79].forEach((m,i)=>this.tone(this.midi(m),.12,{type:'triangle',vol:.5,when:i*.07}));break;case'street':this.tone(880,.1,{type:'triangle',vol:.5});this.tone(1100,.12,{type:'triangle',vol:.45,when:.08});break;case'win':[72,76,79,84].forEach((m,i)=>this.tone(this.midi(m),.2,{type:'triangle',vol:.6,when:i*.11}));break;case'emote':this.tone(880,.09,{type:'triangle',vol:.55});this.tone(1320,.13,{type:'triangle',vol:.45,when:.09});break;case'bigwin':[72,76,79,84,88,91].forEach((m,i)=>this.tone(this.midi(m),.24,{type:'triangle',vol:.72,when:i*.1}));this.tone(1046,.35,{type:'sine',vol:.35,when:.05});this.tone(1568,.3,{type:'sine',vol:.3,when:.18});break;case'coin':[84,88,91,96,100,103].forEach((m,i)=>this.tone(this.midi(m),.1,{type:'triangle',vol:.62,when:i*.05}));this.tone(1600,.18,{type:'sine',vol:.45,when:.04});this.tone(2100,.16,{type:'sine',vol:.38,when:.12});this.tone(2600,.14,{type:'sine',vol:.3,when:.2});this.tone(3200,.12,{type:'sine',vol:.22,when:.28});break;case'lose':[64,60,55].forEach((m,i)=>this.tone(this.midi(m),i===2?.34:.15,{type:'sine',vol:.42,when:i*.15}));this.tone(233,.28,{type:'triangle',vol:.18,when:.3});break;}},
   tracks:{1:{bpm:128,leadWave:'triangle',bassWave:'sine',lead:[[76,.5],[79,.5],[81,.5],[79,.5],[76,.5],[74,.5],[72,.5],[74,.5],[76,.5],[79,.5],[81,.5],[84,.5],[81,.5],[79,.5],[76,.5],[74,.5]],bass:[[48,2],[55,2],[57,2],[53,2]]},2:{bpm:120,leadWave:'square',bassWave:'triangle',lead:[[72,.5],[72,.5],[76,.5],[79,.5],[76,.5],[72,.5],[74,.5],[74,.5],[77,.5],[74,.5],[72,.5],[72,.5],[76,.5],[79,.5],[81,.5],[79,.5]],bass:[[48,1],[48,1],[55,1],[55,1],[53,1],[53,1],[55,1],[55,1]]},3:{bpm:138,leadWave:'square',bassWave:'triangle',lead:[[76,.5],[79,.5],[81,.5],[84,.5],[81,.5],[79,.5],[76,.5],[79,.5],[74,.5],[77,.5],[81,.5],[79,.5],[76,.5],[74,.5],[72,.5],[76,.5]],bass:[[48,1],[55,1],[48,1],[55,1],[53,1],[57,1],[55,1],[48,1]]},4:{bpm:112,leadWave:'triangle',bassWave:'sine',lead:[[72,.5],[76,.5],[79,.5],[81,.5],[79,.5],[76,.5],[74,.5],[72,.5],[74,.5],[77,.5],[81,.5],[84,.5],[81,.5],[79,.5],[76,.5],[74,.5]],bass:[[48,2],[53,2],[55,2],[48,2]]}},
-  startBGM(track){this.bgmTrack=track;this.stopBGM();if(!track||!this.ctx)return;const t=this.tracks[track];if(!t)return;const begin=()=>{this.lead={step:0,next:this.ctx.currentTime+.1};this.bass={step:0,next:this.ctx.currentTime+.1};const beat=60/t.bpm;this.bgmTimer=setInterval(()=>{if(!this.ctx||this.ctx.state!=='running')return;const ahead=this.ctx.currentTime+.3;while(this.lead.next<ahead){const[m,b]=t.lead[this.lead.step%t.lead.length];if(m>0)this.tone(this.midi(m),b*beat*.9,{type:t.leadWave,vol:.09,when:this.lead.next-this.ctx.currentTime,dest:this.bgmGain});this.lead.next+=b*beat;this.lead.step++;}while(this.bass.next<ahead){const[m,b]=t.bass[this.bass.step%t.bass.length];if(m>0)this.tone(this.midi(m),b*beat*.95,{type:t.bassWave,vol:.05,when:this.bass.next-this.ctx.currentTime,dest:this.bgmGain});this.bass.next+=b*beat;this.bass.step++;}},120);};if(this.ctx.state==='running')begin();else this.ctx.resume().then(()=>{if(this.bgmTrack===track&&this.ctx&&this.ctx.state==='running')begin();}).catch(()=>{});},
+  startBGM(track){this.bgmTrack=track;this.stopBGM();if(!track||!this.ctx||this.bgmEnabled===false)return;const t=this.tracks[track];if(!t)return;const begin=()=>{this.lead={step:0,next:this.ctx.currentTime+.1};this.bass={step:0,next:this.ctx.currentTime+.1};const beat=60/t.bpm;this.bgmTimer=setInterval(()=>{if(!this.ctx||this.ctx.state!=='running')return;const ahead=this.ctx.currentTime+.3;while(this.lead.next<ahead){const[m,b]=t.lead[this.lead.step%t.lead.length];if(m>0)this.tone(this.midi(m),b*beat*.9,{type:t.leadWave,vol:.09,when:this.lead.next-this.ctx.currentTime,dest:this.bgmGain});this.lead.next+=b*beat;this.lead.step++;}while(this.bass.next<ahead){const[m,b]=t.bass[this.bass.step%t.bass.length];if(m>0)this.tone(this.midi(m),b*beat*.95,{type:t.bassWave,vol:.05,when:this.bass.next-this.ctx.currentTime,dest:this.bgmGain});this.bass.next+=b*beat;this.bass.step++;}},120);};if(this.ctx.state==='running')begin();else this.ctx.resume().then(()=>{if(this.bgmTrack===track&&this.ctx&&this.ctx.state==='running')begin();}).catch(()=>{});},
   stopBGM(){if(this.bgmTimer){clearInterval(this.bgmTimer);this.bgmTimer=null;}},
   _lastSpokeText:'',_lastSpokeAt:0,voiceGeneration:0,idleResolvers:[],
   speak(text){
@@ -191,6 +191,17 @@ function sendEmote(text){
   showEmote(emoteIndex(mode==='offline'?'me':myPid),text,true);
   if(mode==='online')send({type:'emote',text});
 }
+/* 语音留言播放：base64 → PCM，走已解锁的 AudioContext 原声播放 */
+async function playVoiceB64(b64){
+  try{
+    AudioSys.ensure();
+    const actx=AudioSys.ctx; if(!actx)return;
+    const bin=atob(b64);const buf=new Uint8Array(bin.length);
+    for(let i=0;i<bin.length;i++)buf[i]=bin.charCodeAt(i);
+    const audio=await actx.decodeAudioData(buf.buffer);
+    const src=actx.createBufferSource();src.buffer=audio;src.connect(actx.destination);src.start();
+  }catch(e){}
+}
 
 /* ---------- 联机 ---------- */
 function wsUrl(){ const p=location.protocol==='https:'?'wss':'ws'; return `${p}://${location.host}/`; }
@@ -221,6 +232,19 @@ function connect(pending){
   sock.onmessage=e=>{ if(ws!==sock)return; let msg; try{msg=JSON.parse(e.data);}catch(err){return;}
     if(msg.type==='pong'){ lastPongAt=Date.now(); return; }
     if(msg.type==='connected')return;
+    if(msg.type==='voice'){
+      // 收到语音留言：挂气泡并原声播放（发送者自己不重复播放）；找不到座位也要播放，避免静默丢声
+      const v=msg.voice||{};
+      if(!v.data||!v.seq||v.seq===window.__lastVoiceSeq)return;
+      window.__lastVoiceSeq=v.seq;
+      const vIdx=emoteIndex(v.pid);
+      if(vIdx>=0)showEmote(vIdx,'语音 '+(v.dur/1000).toFixed(1)+'秒',false);
+      if(v.pid!==myPid)playVoiceB64(v.data);
+    }
+    if(msg.type==='voice-ack'){
+      const n=msg.count|0;
+      showEmote(emoteIndex(myPid),n>0?('语音已送达'+cnNum(n)+'位玩家'):'没有其他在线玩家收到语音',false);
+    }
     if(msg.type==='room'){ myPid=msg.pid;isOwner=msg.owner===msg.pid;roomCode=msg.code;reconnectTries=0;onJoined(); }
     else if(msg.type==='state'){
       const j=JSON.stringify(msg.state); if(j===window.__lastStateJson)return;
@@ -489,9 +513,99 @@ function quickRaise(st,frac){
   const to=Math.max(minTo,Math.min(maxTo,me.bet+callAmt+Math.round((st.pot||0)*frac)));
   doAction({type:'raise',to});
 }
+/* 留言入口：进牌桌即创建（悬浮在牌桌左下角，不依赖轮次）；点一下=文字输入，长按0.5秒=录音，最长20秒 */
+function ensureChatRow(box){
+  if(box.chatRow&&box.chatRow.isConnected)return;
+  box.chatRow=document.createElement('div'); box.chatRow.className='chat-row';
+  box.micBtn=document.createElement('button'); box.micBtn.type='button'; box.micBtn.className='btn-mic'; box.micBtn.title='快捷语';
+  box.micBtn.innerHTML='<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
+  box.chatInput=document.createElement('input'); box.chatInput.type='text'; box.chatInput.maxLength=40; box.chatInput.placeholder='说点啥…'; box.chatInput.autocomplete='off'; box.chatInput.style.display='none';
+  box.chatSend=document.createElement('button'); box.chatSend.type='button'; box.chatSend.className='btn-chat-send'; box.chatSend.textContent='发送'; box.chatSend.style.display='none';
+  box.recBar=document.createElement('div'); box.recBar.className='rec-bar'; box.recBar.style.display='none';
+  box.recBar.innerHTML='<span class="rec-dot"></span><span class="rec-time">0.0s / 20s</span><span class="rec-hint">松手发送</span>';
+  box.chatRow.appendChild(box.micBtn); box.chatRow.appendChild(box.chatInput); box.chatRow.appendChild(box.chatSend); box.chatRow.appendChild(box.recBar);
+  box.parentElement.appendChild(box.chatRow);
+  const toggleChat=show=>{ box.chatInput.style.display=show?'':'none'; box.chatSend.style.display=show?'':'none'; box.recBar.style.display='none'; if(show)setTimeout(()=>box.chatInput.focus(),0); else box.chatInput.value=''; };
+  let pressTimer=null,recorder=null,recChunks=[],recStart=0,recTick=null,recording=false,recDiscard=false,pressed=false;
+  const REC_MAX=20000;
+  const chatToast=text=>showEmote(emoteIndex(mode==='offline'?'me':myPid),text,false);
+  const recUI=on=>{ box.recBar.style.display=on?'':'none'; box.chatInput.style.display='none'; box.chatSend.style.display='none'; box.chatInput.value=''; box.micBtn.classList.toggle('rec-on',on); };
+  const startRec=async()=>{
+    if(recording)return;
+    if(mode!=='online'){chatToast('语音留言仅联机房间可用');return;}
+    if(!window.isSecureContext){chatToast('录音需要 https 或 localhost，局域网 IP 访问浏览器会禁止麦克风');return;}
+    if(!navigator.mediaDevices||!window.MediaRecorder){chatToast('当前浏览器不支持录音');return;}
+    try{
+      const stream=await navigator.mediaDevices.getUserMedia({audio:true});
+      // 首次录音会弹浏览器权限框；若弹窗期间用户已松手，直接取消本次录音，避免"允许后一直红色录音"
+      if(!pressed){ stream.getTracks().forEach(t=>t.stop()); return; }
+      const mime=MediaRecorder.isTypeSupported('audio/webm;codecs=opus')?'audio/webm;codecs=opus':(MediaRecorder.isTypeSupported('audio/mp4')?'audio/mp4':'');
+      recorder=new MediaRecorder(stream,{...(mime?{mimeType:mime}:{}),audioBitsPerSecond:64000});
+      recChunks=[];recStart=Date.now();recording=true;recDiscard=false;
+      recorder.ondataavailable=e=>{ if(e.data&&e.data.size)recChunks.push(e.data); };
+      recorder.onstop=()=>{
+        stream.getTracks().forEach(t=>t.stop());
+        const dur=Date.now()-recStart;
+        const blob=new Blob(recChunks,{type:mime||'audio/webm'});recChunks=[];
+        if(recDiscard)return;
+        if(dur<600){chatToast('说话太短，已取消');return;}
+        if(!blob.size)return;
+        const r=new FileReader();
+        r.onload=()=>{
+          const b64=String(r.result).split(',')[1]||'';
+          if(b64.length>240000){chatToast('语音过长，发送失败');return;}
+          send({type:'voice',mime:blob.type,dur,data:b64});
+          showEmote(emoteIndex(myPid),'语音 '+(dur/1000).toFixed(1)+'秒',false);
+          playVoiceB64(b64);
+        };
+        r.readAsDataURL(blob);
+      };
+      recorder.start();
+      recUI(true);
+      recTick=setInterval(()=>{
+        const s=(Date.now()-recStart)/1000;
+        const el=box.recBar.querySelector('.rec-time');
+        if(el)el.textContent=s.toFixed(1)+'s / 20s';
+        if(Date.now()-recStart>=REC_MAX)stopRec(false);
+      },100);
+    }catch(err){
+      if(err&&err.name==='NotAllowedError')chatToast('麦克风权限被拒绝，请在浏览器设置中允许');
+      else chatToast('录音启动失败');
+    }
+  };
+  const stopRec=discard=>{
+    if(!recording)return;
+    recording=false;recDiscard=!!discard;clearInterval(recTick);recTick=null;
+    recUI(false);
+    try{recorder.stop();}catch(e){}
+  };
+  box.micBtn.addEventListener('contextmenu',e=>e.preventDefault());
+  box.micBtn.onpointerdown=e=>{
+    if(e.button===2)return;
+    pressed=true;
+    try{box.micBtn.setPointerCapture(e.pointerId);}catch(_){}
+    pressTimer=setTimeout(()=>{ pressTimer=null; startRec(); },500);
+  };
+  box.micBtn.onpointerup=()=>{
+    pressed=false;
+    if(pressTimer){ clearTimeout(pressTimer);pressTimer=null; toggleChat(box.chatInput.style.display==='none'); }
+    else if(recording)stopRec(false);
+  };
+  box.micBtn.onpointercancel=()=>{ pressed=false; if(pressTimer){clearTimeout(pressTimer);pressTimer=null;} if(recording)stopRec(true); };
+  const sendChat=()=>{
+    const text=(box.chatInput.value||'').trim().slice(0,40);
+    if(!text)return;
+    box.chatInput.value=''; toggleChat(false);
+    sendEmote(text);
+  };
+  box.chatSend.onclick=sendChat;
+  box.chatInput.onkeydown=e=>{ if(e.key==='Enter'){e.preventDefault();sendChat();} };
+  box.parentElement.addEventListener('click',e=>{ if(box.chatInput.style.display!=='none'&&!box.chatRow.contains(e.target))toggleChat(false); });
+}
 function renderControls(st){
   const box=$('controls');
   if(presenting){ showWaiting(box,'发牌 · 行动播报中…'); return; }
+  ensureChatRow(box);
   box._waitText=null;
   if(st.over&&st.payout&&st.payout.length){
     box.innerHTML=''; box._init=false;
@@ -513,29 +627,6 @@ function renderControls(st){
   // 所以每次轮到玩家时，_init 都是 false → 会重新创建按钮 DOM
   if(!box._init){
     box.innerHTML=''; box._init=true;
-    // 留言入口：悬浮在牌桌左下角（操作条上方最左侧），默认只显示小图标，点击展开输入框并自动聚焦
-    if(!box.chatRow||!box.chatRow.isConnected){
-      box.chatRow=document.createElement('div'); box.chatRow.className='chat-row';
-      box.micBtn=document.createElement('button'); box.micBtn.type='button'; box.micBtn.className='btn-mic'; box.micBtn.title='快捷语';
-      box.micBtn.innerHTML='<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
-      box.chatInput=document.createElement('input'); box.chatInput.type='text'; box.chatInput.maxLength=40; box.chatInput.placeholder='说点啥…'; box.chatInput.autocomplete='off'; box.chatInput.style.display='none';
-      box.chatSend=document.createElement('button'); box.chatSend.type='button'; box.chatSend.className='btn-chat-send'; box.chatSend.textContent='发送'; box.chatSend.style.display='none';
-      box.chatRow.appendChild(box.micBtn); box.chatRow.appendChild(box.chatInput); box.chatRow.appendChild(box.chatSend);
-      box.parentElement.appendChild(box.chatRow);
-      const toggleChat=show=>{ box.chatInput.style.display=show?'':'none'; box.chatSend.style.display=show?'':'none'; if(show)setTimeout(()=>box.chatInput.focus(),0); else box.chatInput.value=''; };
-      box.micBtn.onpointerdown=e=>e.preventDefault();
-      box.micBtn.onclick=()=>toggleChat(box.chatInput.style.display==='none');
-      const sendChat=()=>{
-        const text=(box.chatInput.value||'').trim().slice(0,40);
-        if(!text)return;
-        box.chatInput.value=''; toggleChat(false);
-        sendEmote(text);
-      };
-      box.chatSend.onclick=sendChat;
-      box.chatInput.onkeydown=e=>{ if(e.key==='Enter'){e.preventDefault();sendChat();} };
-      // 点击牌桌空白处收起输入框；点留言行内部（图标/输入框/发送）不收起
-      box.parentElement.addEventListener('click',e=>{ if(box.chatInput.style.display!=='none'&&!box.chatRow.contains(e.target))toggleChat(false); });
-    }
     box.foldBtn=document.createElement('button'); box.foldBtn.className='btn-fold'; box.foldBtn.textContent='弃牌';
     box.foldBtn.onclick=()=>doAction({type:'fold'}); box.appendChild(box.foldBtn);
     box.chkBtn=document.createElement('button'); box.chkBtn.className='btn-call'; box.chkBtn.textContent='过牌';
@@ -596,7 +687,8 @@ $('btnExport').onclick=()=>{ const ev=mode==='offline'?table.events:(lastState&&
 const bindBoth=(el,fn)=>{['input','change'].forEach(ev=>el.addEventListener(ev,fn));};
 const applyBGM=val=>{ AudioSys.ensure(); AudioSys.startBGM(parseInt(val)||0); const a=$('bgmSelect'),b=$('bgmModalSelect'); if(a)a.value=val; if(b)b.value=val; };
 const applyVoice=on=>{ AudioSys.voiceOn=on; const a=$('voiceToggle'),b=$('voiceModalToggle'); if(a)a.checked=on; if(b)b.checked=on; if(on){AudioSys.unlock();AudioSys.pumpVoice();}else AudioSys.stopVoice(); };
-const applyVol=val=>{ const a=$('volume'),b=$('volumeModal'); if(a)a.value=val; if(b)b.value=val; AudioSys.ensure(); AudioSys.volume(); };
+const applyVol=val=>{ const a=$('volume'),b=$('volumeModal'); if(a)a.value=val; if(b)b.value=val; AudioSys.ensure(); AudioSys.volume(); AudioSys.muted=false; const mb=$('btnBgm'); if(mb){mb.style.opacity='';mb.style.textDecoration='';} };
+const applyBgmEnabled=on=>{ AudioSys.bgmEnabled=on; if(on)AudioSys.startBGM(parseInt($('bgmModalSelect').value)||parseInt($('bgmSelect').value)||0); else AudioSys.stopBGM(); const c=$('bgmModalToggle'); if(c)c.checked=on; };
 bindBoth($('bgmSelect'),e=>applyBGM(e.target.value));
 bindBoth($('voiceToggle'),e=>applyVoice(e.target.checked));
 bindBoth($('volume'),e=>applyVol(e.target.value));
@@ -605,7 +697,22 @@ function openModal(id){ $(id).style.display='flex'; }
 function closeModal(id){ $(id).style.display='none'; }
 document.querySelectorAll('.modal-overlay').forEach(ov=>{ ov.addEventListener('click',e=>{ if(e.target===ov) ov.style.display='none'; }); });
 document.querySelectorAll('.modal-close').forEach(b=>{ b.onclick=()=>closeModal(b.dataset.close); });
-$('btnBgm').onclick=()=>{ $('bgmModalSelect').value=$('bgmSelect').value; $('voiceModalToggle').checked=AudioSys.voiceOn; $('volumeModal').value=$('volume').value; openModal('bgmModal'); };
+/* 音乐按钮：单击开弹窗；短时双击=整体静音，再双击恢复 */
+let bgmClickAt=0,bgmClickTimer=null;
+$('btnBgm').onclick=()=>{
+  const now=Date.now();
+  if(now-bgmClickAt<320){
+    clearTimeout(bgmClickTimer);bgmClickTimer=null;bgmClickAt=0;
+    AudioSys.ensure();
+    AudioSys.muted=!AudioSys.muted;
+    if(AudioSys.muted){ if(AudioSys.master)AudioSys.master.gain.value=0; }
+    else AudioSys.volume();
+    const mb=$('btnBgm'); mb.style.opacity=AudioSys.muted?'.45':''; mb.style.textDecoration=AudioSys.muted?'line-through':'';
+    return;
+  }
+  bgmClickAt=now;
+  bgmClickTimer=setTimeout(()=>{ bgmClickTimer=null;bgmClickAt=0; $('bgmModalSelect').value=$('bgmSelect').value; $('voiceModalToggle').checked=AudioSys.voiceOn; const tc=$('bgmModalToggle'); if(tc)tc.checked=AudioSys.bgmEnabled!==false; $('volumeModal').value=$('volume').value; openModal('bgmModal'); },330);
+};
 $('btnHelp').onclick=()=>openModal('helpModal');
 $('btnEmote').onclick=()=>{
   const box=$('emoteList');
@@ -632,6 +739,7 @@ $('btnInvite').onclick=()=>{ copyInvite($('btnInvite')); };
 $('btnKickBot').onclick=()=>{ AudioSys.unlock(); send({type:'kick-bot'}); };
 bindBoth($('bgmModalSelect'),e=>applyBGM(e.target.value));
 bindBoth($('voiceModalToggle'),e=>applyVoice(e.target.checked));
+bindBoth($('bgmModalToggle'),e=>applyBgmEnabled(e.target.checked));
 bindBoth($('volumeModal'),e=>applyVol(e.target.value));
 
 let resizeTimer=null;

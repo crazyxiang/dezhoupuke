@@ -209,6 +209,26 @@ wss.on('connection', (ws) => {
       return;
     }
 
+    if (msg.type === 'voice') {
+      // 语音留言：一次性广播（不进快照，避免 state 包被音频撑大）；限时长 21s、大小 240KB（base64）、mime 白名单，2 秒限频
+      const data = typeof msg.data === 'string' ? msg.data : '';
+      const dur = +msg.dur || 0;
+      const mimeOk = typeof msg.mime === 'string' && /^audio\/(webm|mp4|ogg|aac|mpeg)/.test(msg.mime);
+      if (!data || data.length > 240000 || dur <= 0 || dur > 21000 || !mimeOk) return;
+      const p = room.table.byId(pid);
+      if (!p) return;
+      if (Date.now() - (ws._lastVoiceAt || 0) < 2000) return;
+      ws._lastVoiceAt = Date.now();
+      const payload = { seq: (room.voiceSeq = (room.voiceSeq || 0) + 1), pid, name: p.name, mime: msg.mime, dur, data };
+      let delivered = 0;
+      for (const [rpid, sock] of room.sockets) {
+        if (sock.readyState === 1 && rpid !== pid) { sock.send(JSON.stringify({ type: 'voice', voice: payload })); delivered++; }
+      }
+      // 回执给发送者：直接看到语音送达了几位玩家
+      try { ws.send(JSON.stringify({ type: 'voice-ack', count: delivered })); } catch (e) {}
+      return;
+    }
+
     if (msg.type === 'kick-bot') {
       // 有人类加入后可踢走一个 AI；中途不能踢，避免破坏当前手牌
       if (!room.table.over) return ws.send(JSON.stringify({ type: 'error', error: '本手结束后再踢走 AI' }));
