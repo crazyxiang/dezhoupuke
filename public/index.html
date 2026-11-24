@@ -2,9 +2,9 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>李无邪欢乐牌局</title>
-<link rel="stylesheet" href="/style.css">
+<link rel="stylesheet" href="/style.css?v=20261126h">
 </head>
 <body>
 <h1>♠ 李无邪欢乐牌局 ♥</h1>
@@ -13,28 +13,49 @@
 <div class="menu" id="menu">
   <h2>加入对局</h2>
   <label>你的昵称</label>
-  <input id="nick" maxlength="10" placeholder="输入昵称">
+  <div class="nick-wrap">
+    <input id="nick" maxlength="10" placeholder="输入昵称（点我快速选）" autocomplete="off">
+    <div class="nick-dropdown" id="nickDropdown" style="display:none"></div>
+  </div>
+  <datalist id="nickList">
+    <option value="赌神">
+    <option value="赌后">
+    <option value="赌王">
+    <option value="赌圣">   
+    <option value="扑克王子">
+    <option value="扑克公主">
+    <option value="梭哈哥">
+    <option value="梭哈姐">
+    <option value="黑桃皇后">
+
+  </datalist>
   <div class="row">
     <button class="btn-call" id="btnOffline">单机练习（AI 陪练）</button>
   </div>
   <div class="row">
     <button class="btn-raise" id="btnCreate">创建房间</button>
-    <button class="btn-fold" id="btnJoin">加入房间</button>
+    <button class="btn-fold" id="btnJoin" style="display:none">加入房间</button>
   </div>
-  <label style="margin-top:14px">房间码（加入时填写）</label>
-  <input id="roomCode" maxlength="4" placeholder="4 位房间码">
+  <div id="joinHint" class="hint" style="display:none"></div>
+  <input id="roomCode" maxlength="4" style="display:none">
   <div id="connMsg" class="conn-msg"></div>
-  <div class="hint">联机需用源码包启动本地 Node 服务（npm install && npm start）后访问 http://localhost:3000，好友凭房间码入座；空位可添加 AI 补位。纯娱乐虚拟积分，仅供练习。</div>
 </div>
 
 <!-- 牌桌 -->
 <div class="wrap" id="tableWrap" style="display:none">
   <div class="maincol">
+    <div class="table-tools">
+      <button class="tool-btn" id="btnInvite" style="display:none">邀请</button>
+      <button class="tool-btn" id="btnEmote">快捷语</button>
+      <button class="tool-btn" id="btnKickBot" style="display:none">踢走AI</button>
+      <button class="tool-btn" id="btnBgm">音乐</button>
+      <button class="tool-btn" id="btnHelp">教程</button>
+    </div>
     <div class="table" id="table">
       <div class="center">
-        <div class="pot" id="pot">奖池 0</div>
-        <div class="message" id="message"></div>
+        <div class="pot-bar"><span class="pot-chip"></span><span class="pot" id="pot">奖池 0</span></div>
         <div class="community" id="community"></div>
+        <div class="message" id="message"></div>
         <div class="stage" id="stage">准备开始</div>
       </div>
       <div class="controls" id="controls"></div>
@@ -51,20 +72,15 @@
           <option value="0">关闭</option>
           <option value="1" selected>欢乐节拍</option>
           <option value="2">喜庆锣鼓</option>
-          <option value="3">轻快市集</option>
-          <option value="4">幸运嘉年华</option>
-          <option value="5">愉悦小调</option>
-          <option value="6">欢乐快板</option>
-          <option value="7">民谣轻快</option>
-          <option value="8">热闹锣鼓</option>
+          <option value="3">斗地主风</option>
+          <option value="4">秧歌小调</option>
         </select>
       </div>
       <div class="audio-row">
         <label class="switch"><input type="checkbox" id="voiceToggle" checked> 语音播报</label>
-        <label class="switch"><input type="checkbox" id="sfxToggle" checked> 操作音效</label>
       </div>
       <div class="audio-row">
-        <span>音量</span>
+        <span>总音量</span>
         <input type="range" id="volume" min="0" max="100" value="70">
       </div>
     </div>
@@ -105,14 +121,93 @@
       <ul>
         <li>每人 2 张底牌，桌面 5 张公共牌，7 选 5 比大小。</li>
         <li>四轮行动：翻牌前 → 翻牌 → 转牌 → 河牌。</li>
-        <li>支持主池/边池：全下玩家只能赢自己有资格的奖池。</li>
+        <li>支持主池/边池：梭哈玩家只能赢自己有资格的奖池。</li>
         <li>每手结束后台自动对账：积分守恒、奖池清零、派奖资格与牌型。</li>
       </ul>
     </div>
   </div>
 </div>
 
-<script src="/src/game-core.js"></script>
-<script src="/app.js"></script>
+<!-- 音乐与音效弹窗 -->
+<div class="modal-overlay" id="bgmModal" style="display:none">
+  <div class="modal-panel">
+    <div class="modal-title">音乐与音效</div>
+    <div class="audio-row">
+      <span>背景音乐</span>
+      <select id="bgmModalSelect">
+        <option value="0">关闭</option>
+        <option value="1">欢乐节拍</option>
+        <option value="2">喜庆锣鼓</option>
+        <option value="3">斗地主风</option>
+        <option value="4">秧歌小调</option>
+      </select>
+    </div>
+    <div class="audio-row">
+      <label class="switch"><input type="checkbox" id="voiceModalToggle" checked> 语音播报</label>
+    </div>
+    <div class="audio-row">
+      <span>总音量</span>
+      <input type="range" id="volumeModal" min="0" max="100" value="70">
+    </div>
+    <button class="secondary modal-close" data-close="bgmModal">关闭</button>
+  </div>
+</div>
+
+<!-- 教程弹窗：牌型大小 + 玩法说明 -->
+<div class="modal-overlay" id="helpModal" style="display:none">
+  <div class="modal-panel">
+    <div class="modal-title">教程</div>
+    <div class="ranklist">
+      <div><span>同花顺</span><span>8</span></div>
+      <div><span>四条</span><span>7</span></div>
+      <div><span>葫芦</span><span>6</span></div>
+      <div><span>同花</span><span>5</span></div>
+      <div><span>顺子</span><span>4</span></div>
+      <div><span>三条</span><span>3</span></div>
+      <div><span>两对</span><span>2</span></div>
+      <div><span>一对</span><span>1</span></div>
+      <div><span>高牌</span><span>0</span></div>
+    </div>
+    <ul class="rules">
+      <li>每人 2 张底牌，桌面 5 张公共牌，7 选 5 比大小。</li>
+      <li>四轮行动：翻牌前 → 翻牌 → 转牌 → 河牌。</li>
+      <li>支持主池/边池：梭哈玩家只能赢自己有资格的奖池。</li>
+      <li>每手结束后台自动对账：积分守恒、奖池清零、派奖资格与牌型。</li>
+    </ul>
+    <button class="secondary modal-close" data-close="helpModal">关闭</button>
+  </div>
+</div>
+
+<!-- 快捷语弹窗 -->
+<div class="modal-overlay" id="emoteModal" style="display:none">
+  <div class="modal-panel">
+    <div class="modal-title">快捷语</div>
+    <div class="emote-tabs" id="emoteTabs">
+      <button type="button" class="emote-tab active" data-tab="win">赢了</button>
+      <button type="button" class="emote-tab" data-tab="lose">不服</button>
+    </div>
+    <div class="emote-list" id="emoteList"></div>
+    <!-- 暂时停用：弹窗内输入框改为操作区话筒入口，避免弹窗过高出现双滚动条
+    <div class="emote-custom">
+      <input id="emoteInput" type="text" maxlength="40" placeholder="自己输入想说的话…" autocomplete="off">
+      <button type="button" id="emoteSend">发送</button>
+    </div>
+    -->
+    <button class="secondary modal-close" data-close="emoteModal">关闭</button>
+  </div>
+</div>
+
+<script src="/src/game-core.js?v=20261126d"></script>
+<script src="/app.js?v=20261126h"></script>
+<script>
+var _hmt = _hmt || [];
+(function() {
+  var hm = document.createElement("script");
+  hm.src = "https://hm.baidu.com/hm.js?fea0397ea7f224b91a12be20a6eb6494";
+  var s = document.getElementsByTagName("script")[0]; 
+  s.parentNode.insertBefore(hm, s);
+})();
+</script>
+
 </body>
 </html>

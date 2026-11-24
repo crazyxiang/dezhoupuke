@@ -10,11 +10,11 @@ const app = fs.readFileSync(path.join(root, 'public/app.js'), 'utf8');
 let out = html;
 
 // 1) 内联样式
-out = out.replace('<link rel="stylesheet" href="/style.css">', '<style>\n' + css + '\n</style>');
+out = out.replace(/<link rel="stylesheet" href="\/style\.css[^"]*">/, '<style>\n' + css + '\n</style>');
 
 // 2) 内联引擎与前端脚本
-out = out.replace('<script src="/src/game-core.js"></script>', '<script>\n' + core + '\n</script>');
-out = out.replace('<script src="/app.js"></script>', '<script>\n' + app + '\n</script>');
+out = out.replace(/<script src="\/src\/game-core\.js[^"]*"><\/script>/, '<script>\n' + core + '\n</script>');
+out = out.replace(/<script src="\/app\.js[^"]*"><\/script>/, '<script>\n' + app + '\n</script>');
 
 // 3) 隐藏联机入口（CSS，不删 DOM，避免 onclick 绑定 null）
 const hideCss = `<style>

@@ -18,8 +18,22 @@
     for (const s of SUITS) for (let r = 2; r <= 14; r++) d.push({ rank: r, suit: s });
     return d;
   }
+  /* 优先使用系统加密随机源；浏览器与 Node 20 均支持 WebCrypto，旧环境才回退 Math.random。
+     洗牌只使用 Fisher–Yates，不根据玩家、输赢或 AI 决策调整任何牌的位置。 */
+  function secureRandom() {
+    const c = typeof globalThis !== 'undefined' ? globalThis.crypto : null;
+    if (c && typeof c.getRandomValues === 'function') {
+      const buf = new Uint32Array(1);
+      c.getRandomValues(buf);
+      return buf[0] / 4294967296;
+    }
+    if (typeof require === 'function') {
+      try { return require('crypto').randomBytes(4).readUInt32LE(0) / 4294967296; } catch (e) {}
+    }
+    return Math.random();
+  }
   function shuffle(deck, rng) {
-    rng = rng || Math.random;
+    rng = rng || secureRandom;
     for (let i = deck.length - 1; i > 0; i--) {
       const j = Math.floor(rng() * (i + 1));
       [deck[i], deck[j]] = [deck[j], deck[i]];
@@ -79,6 +93,106 @@
   }
   const handName = h => h ? HAND_NAMES[h[0]] : '';
 
+  /* ---------------- AI：只看自己的底牌、公共牌和下注信息 ---------------- */
+  const clamp01 = n => Math.max(0.05, Math.min(1, n));
+  function preflopStrength(hole) {
+    if (!hole || hole.length < 2) return 0.2;
+    const [a, b] = hole.map(c => c.rank).sort((x, y) => y - x);
+    const suited = hole[0].suit === hole[1].suit;
+    if (a === b) return 0.5 + ((a - 2) / 12) * 0.45;
+    let s = 0.18 + (a / 14) * 0.28 + (b / 14) * 0.16;
+    if (suited) s += 0.07;
+    const gap = a - b;
+    if (gap === 1) s += 0.07; else if (gap === 2) s += 0.03; else if (gap >= 5) s -= 0.05;
+    if (a >= 13 && b >= 10) s += 0.06;
+    return clamp01(s);
+  }
+  function botHandStrength(t, p) {
+    if (!p.hole || p.hole.length < 2) return 0.2;
+    if (!t.community.length) return preflopStrength(p.hole);
+    const all = [...p.hole, ...t.community];
+    const h = bestHand(all);
+    let s = [0.16, 0.52, 0.70, 0.80, 0.86, 0.90, 0.95, 0.985, 1][h[0]];
+    if (h[0] === 1) {
+      const pairRank = h[1];
+      const boardRanks = t.community.map(c => c.rank).sort((a, b) => b - a);
+      if (p.hole[0].rank === p.hole[1].rank) {
+        const overcards = boardRanks.filter(r => r > pairRank).length;
+        s += overcards === 0 ? 0.14 : overcards === 1 ? 0.05 : overcards === 2 ? -0.02 : -0.08;
+      } else {
+        const uniqueBoard = [...new Set(boardRanks)];
+        if (pairRank === uniqueBoard[0]) s += 0.14;
+        else if (pairRank === uniqueBoard[1]) s += 0.06;
+        else s -= 0.03;
+        if (h[2] === 14) s += 0.04; else if (h[2] >= 12) s += 0.02;
+      }
+    }
+    // 听牌必须有自己的底牌参与，不能把纯公共牌听牌误算成自己的强牌。
+    const suits = {};
+    all.forEach(c => suits[c.suit] = (suits[c.suit] || 0) + 1);
+    if (h[0] < 5 && Object.keys(suits).some(suit => suits[suit] === 4 && p.hole.some(c => c.suit === suit))) s += 0.1;
+    if (h[0] < 4) {
+      const ranks = [...new Set(all.map(c => c.rank))].sort((a, b) => a - b);
+      const holeRanks = p.hole.map(c => c.rank);
+      for (let i = 0; i <= ranks.length - 4; i++) {
+        const window = ranks.slice(i, i + 4);
+        if (window[3] - window[0] <= 4 && holeRanks.some(r => window.includes(r))) { s += 0.07; break; }
+      }
+    }
+    return clamp01(s);
+  }
+  function botDecide(t, p, rng) {
+    rng = rng || Math.random;
+    const s = botHandStrength(t, p);
+    const la = t.legalActions(p);
+    const style = p.personality == null ? 1 : p.personality; // 0=稳健，1=机灵，2=凶猛
+    const callAmt = Math.max(0, t.highBet - p.bet);
+    const pot = Math.max(t.bb * 2, t.pot);
+    const bluff = style === 2 ? 0.18 : style === 0 ? 0.05 : 0.1;
+    const raiseTop = style === 2 ? 0.62 : style === 0 ? 0.68 : 0.66;
+    const aggression = style === 2 ? 1.2 : style === 0 ? 0.85 : 1;
+
+    /* 加注尺度随牌力与底池浮动，并带一点随机；避免每把都只加最小注显得在重复动作 */
+    function raiseTo(strength, fracBase) {
+      if (la.maxTo <= la.minTo) return la.minTo;
+      const frac = fracBase == null ? (strength >= 0.92 ? 1.0 : strength >= 0.8 ? 0.72 : 0.48) : fracBase;
+      let to = t.highBet + Math.round(pot * frac * (0.85 + rng() * 0.4));
+      to = Math.max(la.minTo, Math.min(la.maxTo, to));
+      // 接近全下时干脆推掉，避免留下零头
+      if (to >= la.maxTo - t.bb) return la.maxTo;
+      return to;
+    }
+
+    if (callAmt === 0) {
+      if (la.raise) {
+        if (s >= raiseTop) {
+          if (rng() < 0.12) return { type: 'check' }; // 偶尔慢打
+          return { type: 'raise', to: raiseTo(s) };
+        }
+        if (s >= 0.45 && rng() < 0.34 * aggression) return { type: 'raise', to: raiseTo(s, 0.42) };
+        if (s > 0.34 && rng() < bluff * 0.4) return { type: 'raise', to: raiseTo(0.4, 0.4) }; // 偶尔偷池
+      }
+      return { type: 'check' };
+    }
+
+    if (la.raise) {
+      if (s >= raiseTop + 0.08) {
+        if (rng() < 0.15) return { type: 'call' }; // 强牌慢打
+        return { type: 'raise', to: raiseTo(s) };
+      }
+      if (s >= raiseTop && rng() < 0.55 * aggression) return { type: 'raise', to: raiseTo(s) };
+      if (s < 0.4 && rng() < bluff * 0.3) return { type: 'raise', to: raiseTo(0.4, 0.45) }; // 偶尔诈加
+    }
+
+    const call = Math.min(callAmt, p.chips);
+    const potOdds = call / Math.max(1, pot + call);
+    const margin = style === 2 ? 0.07 : style === 0 ? 0.12 : 0.1;
+    const pressure = call >= p.chips * 0.6 || call > pot * 0.75 ? 0.08 : 0;
+    // 一对面对普通下注通常会继续；垃圾牌不乱跟，超大下注仍会按真实牌力弃牌。
+    if (s >= Math.max(0.28, potOdds + margin + pressure)) return { type: 'call' };
+    return { type: 'fold' };
+  }
+
   /* ---------------- 牌桌状态机 ---------------- */
   const STAGES = ['idle', 'preflop', 'flop', 'turn', 'river', 'showdown'];
 
@@ -88,7 +202,7 @@
       this.bb = opts.bigBlind || 20;
       this.startChips = opts.startChips || 1000;
       this.maxSeats = opts.maxSeats || 4;
-      this.rng = opts.rng || Math.random;
+      this.rng = opts.rng || secureRandom;
       this.players = [];
       this.deck = [];
       this.community = [];
@@ -98,19 +212,23 @@
       this.current = 0;
       this.highBet = 0;
       this.minRaise = this.bb;
+      this.maxRaises = opts.maxRaises || 4; // 每条街最多加注次数，避免加注战拖不完
+      this.raisesThisStreet = 0;
       this.over = true;
+      this.needsRunout = false;
       this.handNo = 0;
-      this.log = [];          // 人类可读日志
+      this.log = [];          // 人类可读日志（{seq,msg}）
+      this.logSeq = 0;        // 日志自增序号，供前端增量播报
       this.events = [];       // 对账账本（追加式事件）
       this.lastPayout = [];    // 上一手派彩明细
       this.reconcileReport = null;
     }
 
     /* 座位 */
-    addPlayer({ id, name, isHuman = false, isBot = false }) {
+    addPlayer({ id, name, isHuman = false, isBot = false, personality = null }) {
       if (this.players.length >= this.maxSeats) return null;
       const p = {
-        id, name, isHuman, isBot,
+        id, name, isHuman, isBot, personality,
         chips: this.startChips, hole: [], bet: 0, total: 0,
         folded: false, allin: false, acted: false, hand: null, seat: this.players.length
       };
@@ -124,17 +242,20 @@
     _emit(type, data) {
       this.events.push({ hand: this.handNo, type, ...data, at: Date.now() });
     }
-    _log(msg) { this.log.push(msg); }
+    _log(msg) { this.log.push({ seq: ++this.logSeq, msg }); }
 
     /* 开一手 */
     startHand() {
       if (this.players.length < 2) return { ok: false, error: '至少需要 2 名玩家' };
       this.handNo++;
       this.over = false;
+      this.log = []; this.logSeq = 0; // 【修】每次新手清空日志，防止上一手残留被重新播报
       this.players.forEach(p => {
         p.hole = []; p.bet = 0; p.total = 0; p.folded = false; p.allin = false; p.acted = false; p.hand = null;
       });
       this.community = []; this.pot = 0; this.highBet = 0; this.minRaise = this.bb;
+      this.raisesThisStreet = 0;
+      this.needsRunout = false; this.current = -1;
       this.lastPayout = []; this.reconcileReport = null;
       this.deck = shuffle(buildDeck(), this.rng);
       this.dealer = (this.dealer + 1) % this.players.length;
@@ -147,17 +268,36 @@
 
       this.players.forEach(p => { p.hole = [this.deck.pop(), this.deck.pop()]; });
 
-      const sb = (this.dealer + 1) % this.players.length;
-      const bb = (this.dealer + 2) % this.players.length;
+      const n = this.players.length;
+      const sb = n === 2 ? this.dealer : (this.dealer + 1) % n;
+      const bb = n === 2 ? (this.dealer + 1) % n : (this.dealer + 2) % n;
       this._postBlind(this.players[sb], this.sb, '小盲');
       this._postBlind(this.players[bb], this.bb, '大盲');
-      this.highBet = this.bb;
+      // 盲注是强制下注，不等于已经行动；大盲在无人加注时仍有选择权。
+      this.highBet = Math.max(this.players[sb].bet, this.players[bb].bet);
       this.stage = 'preflop';
-      this.current = (bb + 1) % this.players.length;
-      if (this.players[this.current].folded || this.players[this.current].allin) this.current = this._nextActive(this.current);
+      this.current = n === 2 ? this.dealer : (bb + 1) % n;
+      if (this.players[this.current].allin) this.current = this._nextActive(this.current);
+      // 只剩一名可行动玩家且已不欠注时，无需无意义地过牌，直接逐街发牌。
+      if (this.active.length <= 1 && this.active.every(p => p.bet >= this.highBet)) {
+        this.current = -1;
+        this.needsRunout = true;
+      }
       this._log(`— 第 ${this.handNo} 手开始，庄家 ${this.players[this.dealer].name} —`);
       this._emit('hand-start', { dealer: this.dealer, handNo: this.handNo });
       return { ok: true };
+    }
+
+    /* 有人破产、游戏结束后重新开始：所有玩家积分重置为初始值，再开下一手 */
+    resetGame() {
+      this.players.forEach(p => {
+        p.chips = this.startChips; p.hole = []; p.bet = 0; p.total = 0;
+        p.folded = false; p.allin = false; p.acted = false; p.hand = null;
+      });
+      this.community = []; this.pot = 0; this.highBet = 0; this.minRaise = this.bb;
+      this.raisesThisStreet = 0; this.needsRunout = false; this.current = -1;
+      this.over = true; this.lastPayout = []; this.reconcileReport = null;
+      this.startSnapshot = this.players.map(p => ({ id: p.id, chips: p.chips }));
     }
 
     _postBlind(p, amount, label) {
@@ -186,7 +326,8 @@
         check: callAmt === 0,
         call: callAmt > 0,
         callAmount: Math.min(callAmt, p.chips),
-        raise: maxTo >= minTo,
+        raise: this.raisesThisStreet < this.maxRaises && maxTo >= minTo,
+        raiseCapped: this.raisesThisStreet >= this.maxRaises,
         minTo, maxTo,
         allin: p.chips > 0
       };
@@ -198,8 +339,9 @@
       const p = this.byId(id);
       if (!p) return { ok: false, error: '玩家不存在' };
       if (this.over) return { ok: false, error: '本局已结束' };
+      if (this.needsRunout || this.current < 0) return { ok: false, error: '正在发公共牌' };
       if (p.folded || p.allin) return { ok: false, error: '该玩家已无法行动' };
-      if (this.players[this.current].id !== id) return { ok: false, error: '还没轮到你' };
+      if (!this.players[this.current] || this.players[this.current].id !== id) return { ok: false, error: '还没轮到你' };
 
       const la = this.legalActions(p);
       switch (cmd.type) {
@@ -225,21 +367,24 @@
           break;
         }
         case 'raise': {
+          if (this.raisesThisStreet >= this.maxRaises) return { ok: false, error: '本轮加注已达上限，只能跟注或弃牌' };
           let to = Math.floor(cmd.to || la.minTo);
           if (to < la.minTo) to = la.minTo;
           if (to > la.maxTo) to = la.maxTo;
-          if (p.bet + p.chips < la.minTo) return { ok: false, error: '积分不足最小加注，只能全下' };
+          if (p.bet + p.chips < la.minTo) return { ok: false, error: '积分不足最小加注，只能梭哈' };
           const put = to - p.bet;
           const incr = to - this.highBet;
+          const openingBet = this.highBet === 0; // 新一条街的首次下注，文案用“下注”而不是“加注到”
           p.chips -= put; p.bet = to; p.total += put; this.pot += put;
           if (incr >= this.minRaise) this.minRaise = incr; // 完整加注才更新最小加注
           this.highBet = to;
+          this.raisesThisStreet++;
           if (p.chips === 0) p.allin = true;
           p.acted = true;
           // 有人加注后，其余未弃牌玩家需重新行动
           this.players.forEach(q => { if (!q.folded && !q.allin && q.id !== p.id) q.acted = false; });
-          this._log(`⬆ ${p.name} 加注到 ${to}`);
-          this._emit('raise', { player: id, to, amount: put });
+          this._log(`⬆ ${p.name} ${openingBet ? '下注' : '加注到'} ${to}`);
+          this._emit(openingBet ? 'bet' : 'raise', { player: id, to, amount: put });
           break;
         }
         case 'allin': {
@@ -248,11 +393,15 @@
           p.allin = true; p.acted = true;
           if (p.bet > this.highBet) {
             const incr = p.bet - this.highBet;
-            if (incr >= this.minRaise) this.minRaise = incr;
             this.highBet = p.bet;
-            this.players.forEach(q => { if (!q.folded && !q.allin && q.id !== p.id) q.acted = false; });
+            this.raisesThisStreet++;
+            if (incr >= this.minRaise) {
+              this.minRaise = incr;
+              this.players.forEach(q => { if (!q.folded && !q.allin && q.id !== p.id) q.acted = false; });
+            }
+            // 不足额全下：不重新打开加注
           }
-          this._log(`💥 ${p.name} 全下 ${put}！`);
+          this._log(`💥 ${p.name} 梭哈 ${put}！`);
           this._emit('allin', { player: id, amount: put });
           break;
         }
@@ -270,28 +419,42 @@
     }
 
     _roundOver() {
-      const high = Math.max(...this.players.map(p => p.bet));
-      return this.alive.every(p => p.allin || (p.acted && p.bet === high));
+      return this.alive.every(p => p.allin || (p.acted && p.bet === this.highBet));
     }
 
-    _nextStreet() {
+    _dealNextStreet() {
       this.players.forEach(p => { p.bet = 0; p.acted = false; });
-      this.highBet = 0; this.minRaise = this.bb;
+      this.highBet = 0; this.minRaise = this.bb; this.raisesThisStreet = 0;
       if (this.stage === 'preflop') { this.community.push(this.deck.pop(), this.deck.pop(), this.deck.pop()); this.stage = 'flop'; }
       else if (this.stage === 'flop') { this.community.push(this.deck.pop()); this.stage = 'turn'; }
       else if (this.stage === 'turn') { this.community.push(this.deck.pop()); this.stage = 'river'; }
-      else { this._showdown(); return; }
-      // 所有存活玩家都已全下：无需再下注，直接发完剩余公共牌并摊牌
-      if (this.active.length === 0) {
-        while (this.community.length < 5) this.community.push(this.deck.pop());
-        this._log(`—— ${this._stageName()} ——`);
-        this._showdown();
+      this._log(`—— ${this._stageName()} ——`);
+      this._emit('street', { stage: this.stage, community: this.community.map(cardStr) });
+    }
+
+    _nextStreet() {
+      if (this.stage === 'river') { this._showdown(); return; }
+      this._dealNextStreet();
+      if (this.active.length <= 1) {
+        this.current = -1;
+        this.needsRunout = true;
         return;
       }
       this.current = (this.dealer + 1) % this.players.length;
       if (this.players[this.current].folded || this.players[this.current].allin) this.current = this._nextActive(this.current);
-      this._log(`—— ${this._stageName()} ——`);
-      this._emit('street', { stage: this.stage, community: this.community.map(cardStr) });
+    }
+
+    /* 全下后每次只推进一条街，让前端能展示翻牌、转牌、河牌。 */
+    advanceRunout() {
+      if (this.over || !this.needsRunout) return false;
+      if (this.stage === 'river') {
+        this.needsRunout = false;
+        this._showdown();
+        return true;
+      }
+      this._dealNextStreet();
+      this.current = -1;
+      return true;
     }
 
     _stageName() { return { preflop: '翻牌前', flop: '翻牌', turn: '转牌', river: '河牌', showdown: '摊牌' }[this.stage] || this.stage; }
@@ -313,6 +476,8 @@
 
     _showdown() {
       this.stage = 'showdown';
+      this.needsRunout = false;
+      this.current = -1;
       const alive = this.alive;
       alive.forEach(p => { p.hand = bestHand([...p.hole, ...this.community]); });
 
@@ -394,13 +559,13 @@
       return { ok, checks, startSum, endSum, pot: this.pot };
     }
 
-    /* 投影给前端：只亮自己与赢家底牌，其余玩家盖牌 */
+    /* 投影给前端：平时只亮自己底牌；摊牌阶段公开全部玩家底牌 */
     snapshot(forId) {
-      const winnerIds = new Set(this.lastPayout.flatMap(x => x.winners));
       return {
         stage: this.stage, over: this.over, pot: this.pot,
-        dealer: this.dealer, current: this.players[this.current]?.id,
-        highBet: this.highBet, minRaise: this.minRaise,
+        dealer: this.dealer, current: this.players[this.current]?.id || null,
+        highBet: this.highBet, minRaise: this.minRaise, needsRunout: this.needsRunout,
+        raisesThisStreet: this.raisesThisStreet, maxRaises: this.maxRaises,
         community: this.community.map(cardStr),
         handNo: this.handNo,
         players: this.players.map(p => ({
@@ -408,9 +573,9 @@
           chips: p.chips, bet: p.bet, total: p.total,
           folded: p.folded, allin: p.allin, acted: p.acted,
           hand: p.hand ? handName(p.hand) : null,
-          hole: (p.id === forId || (this.stage === 'showdown' && !p.folded && winnerIds.has(p.id))) ? p.hole.map(cardStr) : null
+          hole: (p.id === forId || this.stage === 'showdown') ? p.hole.map(cardStr) : null
         })),
-        log: this.log.slice(-80),
+        log: this.log.slice(-80).map(x => ({ seq: x.seq, msg: x.msg })),
         payout: this.lastPayout,
         report: this.reconcileReport,
         startChips: Object.fromEntries((this.startSnapshot || []).map(x => [x.id, x.chips])),
@@ -421,8 +586,9 @@
 
   return {
     SUITS, RANK_LABEL, HAND_NAMES,
-    buildDeck, shuffle, cardStr, isRed,
+    buildDeck, shuffle, secureRandom, cardStr, isRed,
     evaluate5, bestHand, handCompare, handName,
+    preflopStrength, botHandStrength, botDecide,
     Table
   };
 });

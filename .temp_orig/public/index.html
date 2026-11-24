@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>德州扑克 · 联机学习版</title>
+<style>
+  :root{--felt:#1b6b45;--felt-dark:#12492e;--gold:#e8c15a;--text:#f4f1e8;--red:#d64545;--card-bg:#fff;--muted:#bcd6c8}
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:"Noto Sans SC","PingFang SC","Microsoft YaHei",system-ui,sans-serif;background:radial-gradient(ellipse at 50% 30%,#207a4e,#0d3a24 70%);color:var(--text);min-height:100vh;padding:14px}
+  h1{font-size:20px;text-align:center;color:var(--gold);letter-spacing:2px;margin-bottom:10px}
+  .wrap{max-width:1080px;margin:0 auto;display:grid;grid-template-columns:1fr 290px;gap:14px}
+  @media(max-width:860px){.wrap{grid-template-columns:1fr}}
+
+  /* 菜单 */
+  .menu{max-width:420px;margin:6vh auto;background:rgba(0,0,0,.35);border-radius:20px;padding:28px}
+  .menu h2{color:var(--gold);margin-bottom:16px;text-align:center}
+  .menu label{font-size:13px;color:var(--muted);display:block;margin:10px 0 4px}
+  .menu input{width:100%;padding:11px;border-radius:10px;border:none;font-size:15px}
+  .menu .row{display:flex;gap:10px;margin-top:16px;flex-wrap:wrap}
+  .menu button{flex:1;min-width:120px}
+  .hint{font-size:12px;color:var(--muted);margin-top:12px;line-height:1.7}
+
+  /* 牌桌 */
+  .table{position:relative;background:radial-gradient(ellipse at center,var(--felt),var(--felt-dark));border:10px solid #5a3a22;border-radius:120px;min-height:560px;box-shadow:inset 0 0 60px rgba(0,0,0,.45),0 10px 30px rgba(0,0,0,.4)}
+  .seat{position:absolute;width:150px;transform:translate(-50%,-50%);background:rgba(0,0,0,.35);border:2px solid transparent;border-radius:16px;padding:8px;text-align:center}
+  .seat.active{border-color:var(--gold);box-shadow:0 0 18px rgba(232,193,90,.6)}
+  .seat.folded{opacity:.45}
+  .seat.allin{border-color:var(--red)}
+  .seat .name{font-size:13px;font-weight:700}
+  .seat .chips{font-size:12px;color:var(--gold);margin:2px 0}
+  .seat .bet{font-size:12px;color:#ffd9a0;min-height:16px}
+  .seat .tag{display:inline-block;font-size:10px;background:#00000055;border-radius:6px;padding:1px 6px;margin-top:2px}
+  .cards{display:flex;gap:4px;justify-content:center;margin:6px 0;min-height:64px}
+  .card{width:44px;height:62px;background:var(--card-bg);border-radius:6px;color:#111;display:flex;flex-direction:column;justify-content:center;align-items:center;font-weight:700;box-shadow:0 2px 4px rgba(0,0,0,.35);font-size:16px;line-height:1.1}
+  .card.red{color:var(--red)}
+  .card.back{background:repeating-linear-gradient(45deg,#7a2b2b,#7a2b2b 6px,#5c1f1f 6px,#5c1f1f 12px)}
+  .card .s{font-size:14px}
+  .seat .handinfo{font-size:11px;color:var(--muted);min-height:14px}
+  .center{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);text-align:center}
+  .pot{font-size:15px;color:var(--gold);font-weight:700;margin-bottom:8px}
+  .community{display:flex;gap:6px;justify-content:center;min-height:70px}
+  .stage{margin-top:8px;font-size:13px;color:var(--muted)}
+  .roomcode{margin-top:6px;font-size:13px;color:var(--gold)}
+  .message{margin-top:6px;font-size:14px;color:#fff;min-height:20px;font-weight:600}
+
+  .controls{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);display:flex;gap:10px;align-items:center;background:rgba(0,0,0,.4);padding:10px 14px;border-radius:14px;flex-wrap:wrap;justify-content:center}
+  button{border:none;border-radius:10px;padding:10px 16px;font-size:14px;font-weight:700;cursor:pointer;color:#fff}
+  .btn-fold{background:#8a8f98}.btn-call{background:#2f9e63}.btn-raise{background:#e08a2e}.btn-allin{background:var(--red)}
+  button:disabled{opacity:.35;cursor:not-allowed}
+  .raise-row{display:flex;gap:8px;align-items:center}
+  input[type=number]{width:80px;padding:8px;border-radius:8px;border:none;font-size:14px}
+
+  .side{display:flex;flex-direction:column;gap:14px}
+  .panel{background:rgba(0,0,0,.3);border-radius:14px;padding:12px}
+  .panel h2{font-size:14px;color:var(--gold);margin-bottom:8px}
+  .log{height:180px;overflow-y:auto;font-size:12px;line-height:1.7;color:var(--muted)}
+  .check{font-size:12px;line-height:1.8}
+  .check .ok{color:#6fdc8c}.check .bad{color:var(--red)}
+  .rules{font-size:12px;line-height:1.8;color:var(--muted)}
+  .rules li{margin-left:16px}
+  .ranklist{font-size:12px;line-height:1.8}
+  .ranklist div{display:flex;justify-content:space-between}
+  .ranklist span:last-child{color:var(--gold)}
+  .secondary{background:#3a4a55;width:100%;margin-top:8px}
+  .invite{display:flex;gap:8px;margin-top:8px}
+  .invite input{flex:1;padding:8px;border-radius:8px;border:none}
+</style>
+</head>
+<body>
+<h1>♠ 德州扑克 · 联机学习版 ♥</h1>
+
+<!-- 菜单 -->
+<div class="menu" id="menu">
+  <h2>加入牌局</h2>
+  <label>你的昵称</label>
+  <input id="nick" maxlength="10" placeholder="输入昵称">
+  <div class="row">
+    <button class="btn-call" id="btnOffline">单机练习（AI 陪练）</button>
+  </div>
+  <div class="row">
+    <button class="btn-raise" id="btnCreate">创建房间</button>
+    <button class="btn-fold" id="btnJoin">加入房间</button>
+  </div>
+  <label style="margin-top:14px">房间码（加入时填写）</label>
+  <input id="roomCode" maxlength="4" placeholder="4 位房间码">
+  <div class="hint">联机由你启动的服务端主持，好友输入房间码或打开邀请链接即可入座；空位可添加 AI 补位。纯娱乐虚拟筹码，不涉及真钱。</div>
+</div>
+
+<!-- 牌桌 -->
+<div class="wrap" id="tableWrap" style="display:none">
+  <div class="table" id="table">
+    <div class="center">
+      <div class="pot" id="pot">底池 0</div>
+      <div class="community" id="community"></div>
+      <div class="stage" id="stage">准备开始</div>
+      <div class="roomcode" id="roomCodeBar"></div>
+      <div class="message" id="message"></div>
+    </div>
+    <div class="controls" id="controls"></div>
+  </div>
+
+  <div class="side">
+    <div class="panel">
+      <h2>对局日志</h2>
+      <div class="log" id="log"></div>
+      <div class="invite" id="inviteRow" style="display:none">
+        <input id="inviteLink" readonly>
+        <button class="secondary" id="btnCopy">复制邀请</button>
+      </div>
+      <button class="secondary" id="btnNewHand">开始新的一手</button>
+      <button class="secondary" id="btnAddBot" style="display:none">添加 AI 补位</button>
+      <button class="secondary" id="btnExport">导出对账账本 JSON</button>
+    </div>
+    <div class="panel">
+      <h2>机器对账 <span id="reconStatus"></span></h2>
+      <div class="check" id="recon"></div>
+    </div>
+    <div class="panel">
+      <h2>牌型大小（由大到小）</h2>
+      <div class="ranklist">
+        <div><span>同花顺</span><span>8</span></div>
+        <div><span>四条</span><span>7</span></div>
+        <div><span>葫芦</span><span>6</span></div>
+        <div><span>同花</span><span>5</span></div>
+        <div><span>顺子</span><span>4</span></div>
+        <div><span>三条</span><span>3</span></div>
+        <div><span>两对</span><span>2</span></div>
+        <div><span>一对</span><span>1</span></div>
+        <div><span>高牌</span><span>0</span></div>
+      </div>
+    </div>
+    <div class="panel rules">
+      <h2>玩法说明</h2>
+      <ul>
+        <li>每人 2 张底牌，桌面 5 张公共牌，7 选 5 比大小。</li>
+        <li>四轮下注：翻牌前 → 翻牌 → 转牌 → 河牌。</li>
+        <li>支持主池/边池：全下玩家只能赢自己有资格的池。</li>
+        <li>每手结束自动对账：筹码守恒、底池清零、派彩资格与牌型。</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<script src="/src/poker-core.js"></script>
+<script>
+const Core = window.PokerCore;
+const POS = [{x:50,y:74},{x:10,y:55},{x:50,y:14},{x:90,y:55}];
+let mode = null;          // 'offline' | 'online'
+let table = null;         // offline Core.Table
+let ws = null, myPid = null, roomCode = null, lastState = null;
+
+const $ = id => document.getElementById(id);
+
+/* ---------------- 联机 ---------------- */
+function wsUrl(){ const p=location.protocol==='https:'?'wss':'ws'; return `${p}://${location.host}/`; }
+
+function connect(){
+  ws = new WebSocket(wsUrl());
+  ws.onmessage = e => {
+    const msg = JSON.parse(e.data);
+    if (msg.type === 'room') { myPid = msg.pid; roomCode = msg.code; onJoined(); }
+    else if (msg.type === 'state') { lastState = msg.state; render(); }
+    else if (msg.type === 'error') { $('message').textContent = msg.error; }
+  };
+  ws.onclose = () => { $('message').textContent = '连接已断开，刷新可重连'; };
+}
+function send(msg){ if(ws&&ws.readyState===1) ws.send(JSON.stringify(msg)); }
+
+function onJoined(){
+  $('menu').style.display='none';
+  $('tableWrap').style.display='grid';
+  $('roomCodeBar').textContent = roomCode ? `房间码 ${roomCode}（把链接发给好友即可加入）` : '';
+  $('inviteRow').style.display='flex';
+  $('inviteLink').value = location.href + (location.href.includes('?')?'&':'?') + 'room=' + roomCode;
+  $('btnAddBot').style.display='block';
+}
+
+/* ---------------- 单机 ---------------- */
+function startOffline(){
+  mode='offline';
+  table = new Core.Table({ maxSeats:4 });
+  const nick = $('nick').value.trim()||'你';
+  table.addPlayer({ id:'me', name:nick, isHuman:true });
+  table.addPlayer({ id:'b1', name:'AI 小红', isBot:true });
+  table.addPlayer({ id:'b2', name:'AI 老板', isBot:true });
+  table.addPlayer({ id:'b3', name:'AI 慢热', isBot:true });
+  $('menu').style.display='none';
+  $('tableWrap').style.display='grid';
+  startHandOffline();
+}
+function startHandOffline(){
+  table.startHand();
+  lastState = table.snapshot('me');
+  render();
+  scheduleOfflineBot();
+}
+function botStrength(t,p){
+  if(t.community.length===0){
+    const [a,b]=p.hole.map(c=>c.rank).sort((x,y)=>y-x);
+    let s=a===b?(a>=11?.85:a>=7?.7:.5):(a>=13?.55:a>=10?.45:.3);
+    if(p.hole[0].suit===p.hole[1].suit)s+=.1;
+    return Math.min(1,s);
+  }
+  const h=Core.bestHand([...p.hole,...t.community]);
+  const base=[.15,.3,.45,.55,.65,.75,.85,.95,1][h[0]];
+  return Math.min(1,base+Math.random()*.15);
+}
+function scheduleOfflineBot(){
+  if(table.over) return;
+  const p=table.players[table.current];
+  if(p&&p.isBot){
+    setTimeout(()=>{
+      const s=botStrength(table,p);const call=table.highBet-p.bet;const la=table.legalActions(p);let cmd;
+      if(call===0) cmd=s>.62?{type:'raise',to:table.highBet+table.minRaise}:{type:'check'};
+      else if(s>.78)cmd={type:'raise',to:table.highBet+table.minRaise};
+      else if(s>.5)cmd={type:'call'};
+      else if(Math.random()<.08)cmd={type:'call'};else cmd={type:'fold'};
+      const r=table.act(p.id,cmd);
+      if(!r.ok){if(la.call)table.act(p.id,{type:'call'});else table.act(p.id,{type:'fold'});}
+      lastState=table.snapshot('me');render();scheduleOfflineBot();
+    },600);
+  }
+}
+
+/* ---------------- 动作 ---------------- */
+function doAction(action){
+  if(mode==='online'){ send({type:'action', action}); }
+  else{
+    const r=table.act('me',action);
+    if(r.ok){ lastState=table.snapshot('me'); render(); scheduleOfflineBot(); }
+  }
+}
+
+/* ---------------- 渲染 ---------------- */
+function cardHTML(c, down){
+  if(down) return '<div class="card back"></div>';
+  const red = c.suit==='♥'||c.suit==='♦';
+  return `<div class="card ${red?'red':''}"><span>${Core.RANK_LABEL[c.rank]}</span><span class="s">${c.suit}</span></div>`;
+}
+function strCardHTML(s, down){
+  if(down) return '<div class="card back"></div>';
+  const m=s.match(/([0-9]+|J|Q|K|A)([♠♥♦♣])/);
+  const red=m[2]==='♥'||m[2]==='♦';
+  return `<div class="card ${red?'red':''}"><span>${m[1]}</span><span class="s">${m[2]}</span></div>`;
+}
+
+function render(){
+  const st=lastState; if(!st) return;
+  document.querySelectorAll('.seat').forEach(e=>e.remove());
+  const tableEl=$('table');
+
+  st.players.forEach((p,i)=>{
+    const pos=POS[i%4];
+    const seat=document.createElement('div');
+    seat.className='seat'+(p.id===st.current&&!st.over?' active':'')+(p.folded?' folded':'')+(p.allin?' allin':'');
+    seat.style.left=pos.x+'%';seat.style.top=pos.y+'%';
+    const tags=[];
+    if(i===st.dealer)tags.push('庄家');
+    if(i===(st.dealer+1)%st.players.length)tags.push('小盲');
+    if(i===(st.dealer+2)%st.players.length)tags.push('大盲');
+    if(p.allin)tags.push('全下');
+    if(p.isBot)tags.push('AI');
+    const holeHTML = p.hole ? p.hole.map(c=>strCardHTML(c,false)).join('') : '<div class="card back"></div><div class="card back"></div>';
+    seat.innerHTML=`
+      <div class="name">${p.name}</div>
+      <div class="chips">筹码 ${p.chips}</div>
+      <div class="cards">${holeHTML}</div>
+      <div class="bet">${p.bet>0?'下注 '+p.bet:''}</div>
+      <div class="handinfo">${p.hand||''}</div>
+      <div>${tags.map(t=>`<span class="tag">${t}</span>`).join(' ')}</div>`;
+    tableEl.appendChild(seat);
+  });
+
+  $('community').innerHTML = st.community.length ? st.community.map(c=>strCardHTML(c,false)).join('') : '<div style="color:#ffffff55">等待发牌</div>';
+  $('pot').textContent='底池 '+st.pot;
+  const stageName={preflop:'翻牌前',flop:'翻牌',turn:'转牌',river:'河牌',showdown:'摊牌',idle:'准备'}[st.stage]||st.stage;
+  $('stage').textContent=st.over?'本局结束':('阶段：'+stageName);
+  $('log').innerHTML=st.log.slice(-80).map(l=>`<div>${l}</div>`).join('');
+  $('log').scrollTop=$('log').scrollHeight;
+
+  renderRecon(st.report);
+  renderControls(st);
+}
+
+function renderRecon(report){
+  const box=$('recon');
+  if(!report){ box.innerHTML='<div style="color:var(--muted)">开局后自动对账</div>'; $('reconStatus').textContent=''; return; }
+  $('reconStatus').textContent = report.ok?'✓ 全部通过':'✗ 存在异常';
+  box.innerHTML=report.checks.map(c=>
+    `<div class="${c.pass?'ok':'bad'}">${c.pass?'✓':'✗'} ${c.name} <span style="color:var(--muted)">（${c.detail}）</span></div>`
+  ).join('');
+}
+
+function renderControls(st){
+  const box=$('controls'); box.innerHTML='';
+  const me=st.players.find(p=>p.id===myPid||(mode==='offline'&&p.id==='me'));
+  if(!me||st.over||me.folded||me.allin||st.current!==me.id) return;
+
+  const callAmt=Math.max(0,st.highBet-me.bet);
+  const minTo=st.highBet+(st.minRaise||20);
+  const maxTo=me.bet+me.chips;
+
+  const fold=document.createElement('button');fold.className='btn-fold';fold.textContent='弃牌';
+  fold.onclick=()=>doAction({type:'fold'});box.appendChild(fold);
+
+  if(callAmt===0){
+    const ck=document.createElement('button');ck.className='btn-call';ck.textContent='过牌';
+    ck.onclick=()=>doAction({type:'check'});box.appendChild(ck);
+  }else{
+    const cl=document.createElement('button');cl.className='btn-call';cl.textContent=`跟注 ${Math.min(callAmt,me.chips)}`;
+    cl.onclick=()=>doAction({type:'call'});box.appendChild(cl);
+  }
+  if(maxTo>=minTo){
+    const row=document.createElement('div');row.className='raise-row';
+    const num=document.createElement('input');num.type='number';num.value=minTo;num.min=minTo;num.max=maxTo;
+    const ra=document.createElement('button');ra.className='btn-raise';ra.textContent='加注';
+    ra.onclick=()=>{let to=parseInt(num.value)||minTo;to=Math.max(minTo,Math.min(maxTo,to));doAction({type:'raise',to});};
+    row.appendChild(num);row.appendChild(ra);box.appendChild(row);
+  }
+  const ai=document.createElement('button');ai.className='btn-allin';ai.textContent='全下';
+  ai.onclick=()=>doAction({type:'allin'});box.appendChild(ai);
+}
+
+/* ---------------- 事件绑定 ---------------- */
+$('btnOffline').onclick=startOffline;
+$('btnCreate').onclick=()=>{ connect(); send({type:'create', name:$('nick').value.trim()||'玩家'}); };
+$('btnJoin').onclick=()=>{ connect(); send({type:'join', code:$('roomCode').value.trim(), name:$('nick').value.trim()||'玩家'}); };
+$('btnNewHand').onclick=()=>{ if(mode==='online') send({type:'start'}); else startHandOffline(); };
+$('btnAddBot').onclick=()=>{ if(mode==='online') send({type:'add-bot'}); };
+$('btnCopy').onclick=()=>{ $('inviteLink').select(); navigator.clipboard&&navigator.clipboard.writeText($('inviteLink').value); };
+$('btnExport').onclick=()=>{
+  const ev = mode==='offline' ? table.events : (lastState&&lastState.events)||[];
+  const blob=new Blob([JSON.stringify({exportedAt:new Date().toISOString(), events:ev},null,2)],{type:'application/json'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='poker-ledger.json';a.click();
+};
+
+// 链接带 room 自动加入
+(function(){ const q=new URLSearchParams(location.search); const r=q.get('room'); if(r){ $('roomCode').value=r; } })();
+</script>
+</body>
+</html>

@@ -1,0 +1,15 @@
+{
+  "name": "poker-holdem",
+  "version": "1.0.0",
+  "description": "娱乐学习用德州扑克：单机 AI 陪练 + WebSocket 房间联机 + 自动机器对账",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node test/core.test.cjs"
+  },
+  "keywords": ["texas-holdem", "poker", "websocket", "card-game"],
+  "license": "MIT",
+  "dependencies": {
+    "ws": "^8.23.0"
+  }
+}
