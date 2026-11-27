@@ -5,11 +5,11 @@
   --shadow:0 8px 24px rgba(0,0,0,.35);
 }
 *{box-sizing:border-box;margin:0;padding:0}
-html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
+html{-webkit-text-size-adjust:100%;text-size-adjust:100%;overscroll-behavior-y:none}
 body{
   font-family:"Noto Sans SC","PingFang SC","Microsoft YaHei",system-ui,sans-serif;
   background:radial-gradient(ellipse at 50% 20%,#238052,#0a2f1d 75%);
-  color:var(--text); min-height:100vh; padding:14px;
+  color:var(--text); min-height:100vh; padding:14px; overscroll-behavior-y:none;
 }
 h1{
   font-size:21px;text-align:center;letter-spacing:3px;margin-bottom:12px;
@@ -31,13 +31,6 @@ h1{
 .hint{font-size:12px;color:var(--muted);margin-top:12px;line-height:1.7}
 .conn-msg{font-size:13px;font-weight:700;color:var(--red);margin-top:10px;line-height:1.6;min-height:18px}
 .conn-msg.ok{color:#6fdc8c}
-/* 昵称候选下拉：自定义实现，兼容 iOS/Android 等对 <datalist> 支持不佳的浏览器 */
-.nick-wrap{position:relative}
-.nick-dropdown{position:absolute;left:0;right:0;top:calc(100% + 5px);z-index:40;background:#fff;border:1px solid rgba(0,0,0,.12);border-radius:10px;box-shadow:0 8px 22px rgba(0,0,0,.35);max-height:170px;overflow-y:auto}
-.nick-dropdown .nick-opt{display:block;width:100%;text-align:left;background:#fff;color:#111;border:none;border-radius:0;padding:10px 13px;font-size:14.5px;font-weight:700;box-shadow:none;line-height:1.3;flex:0 0 auto}
-.nick-dropdown .nick-opt:hover{background:#f0f7f3}
-.nick-dropdown .nick-opt:active{background:#e3f1e8}
-
 /* 牌桌 */
 .table{
   --opp-card-w:clamp(38px,3.8vw,42px);
@@ -47,7 +40,10 @@ h1{
   background:radial-gradient(ellipse at 50% 30%,#2c8d5e 0%,var(--felt) 46%,var(--felt-dark) 82%);
   border:14px solid #4a2f1b;border-radius:150px;min-height:540px;
   box-shadow:inset 0 0 0 3px rgba(255,255,255,.06),inset 0 0 70px rgba(0,0,0,.5),0 18px 40px rgba(0,0,0,.5);
+  -webkit-touch-callout:none;
 }
+/* 长按留言时避免误选中座位文字（输入框单独放开可选中） */
+.seat,.seat *,.center{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
 .table::after{
   content:'';position:absolute;inset:6px;border-radius:140px;pointer-events:none;z-index:1;
   background:radial-gradient(ellipse at center,rgba(255,255,255,.06),transparent 66%);
@@ -156,6 +152,9 @@ h1{
 .community .card{width:var(--community-card-w);height:calc(var(--community-card-w)*1.36);font-size:calc(var(--community-card-w)*.465)}
 .community .card .s{font-size:calc(var(--community-card-w)*.375)}
 .community .card.empty{background:rgba(255,255,255,.05);border:1px dashed rgba(255,255,255,.18);box-shadow:none}
+/* 弃牌提前结束后补发的公共牌：虚线金框 + “补”标记 */
+.community .card.extra{position:relative;outline:2px dashed rgba(232,193,90,.82);outline-offset:1px}
+.community .card.extra::after{content:'补';position:absolute;top:-8px;right:-6px;font-size:9px;line-height:1;padding:2px 3px;border-radius:5px;background:var(--gold);color:#3a2a00;font-weight:900;box-shadow:0 1px 4px rgba(0,0,0,.45)}
 .stage{margin-top:6px;font-size:12px;color:var(--muted);opacity:.9}
 .roomcode{margin-top:6px;font-size:13px;color:var(--gold)}
 .roomcode-side{font-size:15px;font-weight:800;color:var(--gold);margin-bottom:8px;letter-spacing:2px}
@@ -174,7 +173,7 @@ h1{
 
 /* 操作区：底部悬浮胶囊 + 圆形按钮 */
 .controls{
-  position:absolute;left:50%;bottom:14px;transform:translateX(-50%);z-index:20;
+  position:absolute;left:50%;bottom:14px;transform:translateX(-50%);z-index:30;/* 高于座位层(含 .seat.winner 25)，保证快捷加注与操作按钮不被遮挡 */
   display:flex;gap:10px;align-items:center;justify-content:center;
   padding:8px 12px;border-radius:22px;flex-wrap:wrap;
   background:rgba(5,20,13,.74);border:1px solid rgba(255,255,255,.14);
@@ -382,14 +381,30 @@ input[type=number]{width:80px;padding:8px;border-radius:8px;border:none;font-siz
 }
 
 /* ---------- 通用弹窗 ---------- */
-.modal-overlay{position:fixed;inset:0;z-index:50;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.55);padding:18px}
+.modal-overlay{position:fixed;inset:0;z-index:50;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.55);padding:18px;overflow:hidden;overscroll-behavior:contain}
 .modal-panel{
   background:linear-gradient(160deg,#234a35,#14321f);border:2px solid var(--gold);border-radius:20px;
-  padding:22px 24px;width:100%;max-width:340px;max-height:80vh;overflow-y:auto;box-shadow:0 16px 40px rgba(0,0,0,.5);
+  padding:12px 15px;width:100%;max-width:340px;max-height:80vh;overflow-y:auto;box-shadow:0 16px 40px rgba(0,0,0,.5);
 }
 .modal-title{font-size:19px;font-weight:900;color:var(--gold);letter-spacing:2px;margin-bottom:14px;text-align:center}
 .modal-panel .rules{margin-top:12px}
+/* 设置弹窗：教程 / 设置 选项卡 */
+.setup-panel{max-width:360px}
+.setup-panel .emote-tabs{margin-bottom:10px}
+.setup-body .audio-row{margin:6px 0 10px}
+.setup-body .audio-row input[type=number]{flex:1;width:auto;min-width:0}
+.setup-body .hint{margin-top:4px}
 .modal-close{width:100%;margin-top:16px}
+/* 快捷语/真心话弹窗：面板固定高度，只让列表滚动，避免内外双滚动条 */
+#emoteModal .modal-panel{position:relative;display:flex;flex-direction:column;height:min(82vh,560px);max-height:82vh;overflow:hidden}
+#emoteModal .emote-list{flex:1;min-height:0;max-height:none;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;display:flex;flex-direction:column;gap:8px}
+/* 弹窗右上角关闭按钮 */
+.modal-x{
+  position:absolute;top:8px;right:8px;z-index:2;width:30px;height:30px;min-height:0;min-width:0;padding:0;
+  display:flex;align-items:center;justify-content:center;border-radius:50%;font-size:13px;line-height:1;
+  background:rgba(255,255,255,.14);border:1px solid rgba(255,255,255,.22);color:#e9f3ec;box-shadow:none;
+}
+.modal-x:hover{background:rgba(255,255,255,.26)}
 .emote-list{display:flex;flex-direction:column;gap:8px;max-height:56vh;overflow-y:auto}
 .emote-item{background:rgba(255,255,255,.1);border:1px solid var(--line);color:var(--text);border-radius:10px;padding:10px 12px;font-size:14px;font-weight:700;text-align:left;cursor:pointer;line-height:1.35}
 .emote-item:hover{background:rgba(255,255,255,.18);border-color:var(--gold)}
@@ -404,12 +419,14 @@ input[type=number]{width:80px;padding:8px;border-radius:8px;border:none;font-siz
 /* 操作区话筒行：独占一行在按钮上方；话筒默认展开只显示图标，点击后旁边出现输入框和发送 */
 /* 留言入口：悬浮在牌桌左下角（操作条上方最左侧），小图标；点击展开输入框并自动聚焦 */
 /* 层级：高于座位/桌面默认层，但低于 controls(20)，快捷加注弹层弹出时不被留言按钮遮挡 */
-.chat-row{position:absolute;left:12px;bottom:118px;z-index:19;display:flex;gap:6px;align-items:center}
+/* 留言入口：悬浮在牌桌左下角（操作条上方最左侧） */
+.chat-row{position:absolute;left:12px;bottom:118px;z-index:26;display:flex;gap:6px;align-items:center}/* 高于 .seat.winner(25)，低于 .controls(30) */
+.chat-row.rec-active{z-index:45}/* 录音中的进度条压过真心话卡(41)与结算层(40) */
 .btn-mic{flex:0 0 auto;width:28px;height:28px;min-width:0;min-height:0;padding:0;display:inline-flex;align-items:center;justify-content:center;border-radius:50%;background:linear-gradient(180deg,#3d5568,#263644);color:#e8c15a;-webkit-touch-callout:none;user-select:none;-webkit-user-select:none}
 .btn-mic.rec-on{background:linear-gradient(180deg,#e05b5b,#b23232);color:#fff}
 .btn-mic:hover{filter:brightness(1.15)}
 .btn-mic svg{width:14px;height:14px}
-.chat-row input{width:190px;min-height:30px;background:#0e2418;border:1px solid rgba(255,255,255,.28);color:var(--text);border-radius:999px;padding:3px 12px;font-size:13px;box-shadow:0 4px 12px rgba(0,0,0,.45)}
+.chat-row input{width:190px;min-height:30px;background:#0e2418;border:1px solid rgba(255,255,255,.28);color:var(--text);border-radius:999px;padding:3px 12px;font-size:13px;box-shadow:0 4px 12px rgba(0,0,0,.45);user-select:text;-webkit-user-select:text}
 .chat-row input:focus{outline:none;border-color:var(--gold)}
 .rec-bar{display:inline-flex;align-items:center;gap:8px;background:#0e2418;border:1px solid rgba(255,255,255,.28);border-radius:999px;padding:4px 12px;min-height:30px;box-shadow:0 4px 12px rgba(0,0,0,.45)}
 .rec-dot{width:10px;height:10px;border-radius:50%;background:#e05b5b;animation:recPulse 1s ease-in-out infinite}
@@ -427,3 +444,120 @@ input[type=number]{width:80px;padding:8px;border-radius:8px;border:none;font-siz
   .center{top:46%;max-width:62%}
   .controls{max-width:360px}
 }
+
+/* ---------- 真心话大冒险 ---------- */
+/* 题目浮层：覆盖在牌桌上，卡片以外区域不拦截点击（不影响正常出牌）
+   层级：高于结算浮层(40)，保证弃牌/赢牌结果出现后题目卡仍完整可见；低于录音进度条(45) */
+.truth-overlay{
+  position:absolute;inset:0;z-index:41;display:flex;align-items:center;justify-content:center;
+  background:rgba(0,0,0,.34);pointer-events:none;animation:truthFade .25s ease-out;
+}
+@keyframes truthFade{from{opacity:0}to{opacity:1}}
+.truth-card{position:relative;pointer-events:auto;width:clamp(168px,44vw,222px);text-align:center;perspective:1100px}
+/* 翻牌：从背面 180° 缓慢翻到正面（带轻微缩放回落，像真牌被放下） */
+.tc-inner{
+  position:relative;width:100%;aspect-ratio:400/580;transform-style:preserve-3d;
+  transform-origin:center center;
+  animation:truthFlip 1.9s cubic-bezier(.2,.7,.3,1) both;
+}
+@keyframes truthFlip{
+  0%{transform:rotateY(-180deg) scale(.9);opacity:.85}
+  65%{transform:rotateY(-14deg) scale(1.04);opacity:1}
+  85%{transform:rotateY(3deg) scale(1)}
+  100%{transform:rotateY(0) scale(1)}
+}
+.tc-face{
+  position:absolute;inset:0;border-radius:12px;backface-visibility:hidden;-webkit-backface-visibility:hidden;
+  background-size:100% 100%;background-repeat:no-repeat;box-shadow:0 10px 26px rgba(0,0,0,.62);
+}
+.tc-back{
+  transform:rotateY(180deg);display:flex;align-items:center;justify-content:center;
+  background:linear-gradient(135deg,#3a2410,#6b4a1e);border:2px solid #d9b45a;color:#e8c15a;font-size:36px;
+}
+.tc-back::after{content:'♠'}
+.truth-card.truth .tc-front{background-image:url('/images/zhenxinhua.png')}
+.truth-card.dare .tc-front{background-image:url('/images/damaoxian.png')}
+.tc-text{
+  position:absolute;left:11%;right:11%;top:22.5%;bottom:12%;
+  display:flex;align-items:center;justify-content:center;text-align:center;
+  font-size:clamp(14px,4vw,22px);line-height:1.6;font-weight:800;letter-spacing:.3px;
+}
+.tc-q{display:block;width:100%}
+.truth-card.truth .tc-text{color:#8c1e1e;text-shadow:0 1px 0 rgba(255,255,255,.65)}
+.truth-card.dare .tc-text{color:#463310;text-shadow:0 1px 0 rgba(255,255,255,.5)}
+.tc-btns{display:flex;gap:8px;justify-content:center;margin-top:10px;flex-wrap:nowrap}
+.tc-btns button{
+  flex:1 1 0;min-width:0;min-height:34px;padding:6px 4px;font-size:12.5px;font-weight:800;
+  border-radius:10px;border:1px solid rgba(255,255,255,.14);cursor:pointer;color:#fff;box-shadow:0 3px 8px rgba(0,0,0,.35);
+}
+.tc-btns .btn-answer{background:linear-gradient(180deg,#37b571,#258a54)}
+.tc-btns .btn-dare{background:linear-gradient(180deg,#e05b5b,#b23232)}
+.tc-btns .btn-pass{background:linear-gradient(180deg,#8a97a1,#66727c)}
+/* 卡片关闭键：压在上右角，一半在牌外；配色跟随卡面（真心话红/大冒险绿） */
+.tc-x{
+  position:absolute;top:-9px;right:-9px;z-index:3;width:24px;height:24px;min-height:0;min-width:0;padding:0;
+  display:flex;align-items:center;justify-content:center;border-radius:50%;
+  font-size:11px;line-height:1;font-weight:900;
+  color:#8c1e1e;background:rgba(255,248,238,.95);border:1px solid rgba(140,30,30,.5);
+  box-shadow:0 2px 8px rgba(0,0,0,.35);cursor:pointer;transition:transform .15s,background .15s;
+}
+.truth-card.dare .tc-x{color:#2f4a1e;border-color:rgba(47,74,30,.5);background:rgba(252,247,232,.95)}
+.tc-x:hover{transform:scale(1.1)}
+
+/* 抽题弹窗：面板固定高度、只有题目列表滚动，避免内外双滚动条 */
+.truth-panel{position:relative;display:flex;flex-direction:column;height:min(82vh,560px);max-width:344px;max-height:82vh;overflow:hidden;padding-top:10px}
+.truth-tabs{display:flex;gap:8px;margin-bottom:10px}
+.truth-tab{
+  flex:1;border-radius:999px;padding:8px 0;font-size:14px;font-weight:800;
+  background:rgba(255,255,255,.1);color:var(--text);border:1px solid var(--line);
+  box-shadow:none;min-height:0;min-width:0;line-height:1.2;
+}
+.truth-tab.active{background:linear-gradient(180deg,#e8c15a,#cf9f2a);color:#2a1c00;border-color:#e8c15a}
+.truth-tab[data-tab="dare"].active{background:linear-gradient(180deg,#e05b5b,#b23232);color:#fff;border-color:#e05b5b}
+.truth-custom-row{display:flex;gap:6px;margin-bottom:10px}
+.truth-custom-row input{
+  flex:1;min-width:0;height:34px;padding:0 10px;font-size:13px;color:var(--text);
+  background:rgba(0,0,0,.28);border:1px solid var(--line);border-radius:10px;
+}
+.truth-custom-row input:focus{outline:none;border-color:var(--gold)}
+.truth-use{
+  flex:0 0 auto;width:auto;min-width:0;height:34px;min-height:0;margin:0;padding:0 14px;
+  font-size:12.5px;font-weight:800;border-radius:10px;border:1px solid #e8c15a;
+  background:linear-gradient(180deg,#e8c15a,#cf9f2a);color:#2a1c00;box-shadow:none;
+}
+.truth-list-wrap{
+  flex:1;min-height:0;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;
+  border:1px solid var(--line);border-radius:10px;background:rgba(0,0,0,.22);
+}
+.truth-list{display:flex;flex-direction:column}
+.truth-item{
+  display:block;width:100%;text-align:left;background:transparent;border:none;border-radius:0;box-shadow:none;
+  border-bottom:1px solid rgba(255,255,255,.07);color:var(--text);
+  padding:10px 12px;font-size:13px;font-weight:700;cursor:pointer;line-height:1.45;min-height:0;
+}
+.truth-item:last-child{border-bottom:none}
+.truth-item:hover{background:rgba(255,255,255,.1);color:var(--gold)}
+.truth-item.used{opacity:.38;color:#8f9a94;text-decoration:line-through}
+.truth-draw-row{display:flex;gap:8px;margin-top:10px}
+.truth-draw{
+  flex:1;min-width:0;min-height:36px;padding:6px;font-size:13px;font-weight:800;border-radius:10px;
+  background:rgba(255,255,255,.12);border:1px solid var(--line);color:var(--text);box-shadow:none;
+}
+.truth-draw:hover{background:rgba(255,255,255,.2)}
+
+/* 矮屏（横屏手机/小窗口）：压缩弹窗留白，保证题目列表有可用高度；卡片同步缩小避免超出视口 */
+@media (max-height:560px){
+  .truth-panel{padding:10px 12px}
+  .truth-panel .modal-title{font-size:15px;margin-bottom:8px}
+  .truth-tabs{margin-bottom:6px}
+  .truth-tab{padding:5px 0;font-size:12.5px}
+  .truth-custom-row{margin-bottom:6px}
+  .truth-custom-row input,.truth-use{height:30px}
+  .truth-draw-row{margin-top:6px}
+  .truth-draw{min-height:30px;font-size:12px}
+  .truth-card{width:clamp(128px,32vw,170px)}
+  .tc-btns{margin-top:6px}
+  .tc-btns button{min-height:30px;font-size:11.5px}
+  .tc-x{width:22px;height:22px;font-size:10px;top:-8px;right:-8px}
+}
+

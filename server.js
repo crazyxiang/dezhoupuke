@@ -52,11 +52,11 @@ function makeCode() {
   return code;
 }
 
-function createRoom() {
+function createRoom(startChips) {
   const code = makeCode();
   const room = {
     code,
-    table: new Table({ maxSeats: 4 }),
+    table: new Table({ maxSeats: 4, startChips }),
     sockets: new Map(), // pid -> ws
     owner: null,
     botSeq: 0,
@@ -136,6 +136,13 @@ setInterval(() => {
   }
 }, 30000);
 
+/* 协议层保活：每 25s 发原生 ping 帧，防止代理/负载均衡把长时间无数据的连接静默断开 */
+setInterval(() => {
+  for (const ws of wss.clients) {
+    if (ws.readyState === 1) { try { ws.ping(); } catch (e) {} }
+  }
+}, 25000);
+
 wss.on('connection', (ws) => {
   let pid = null, room = null;
   ws._lastSeen = Date.now();
@@ -149,7 +156,9 @@ wss.on('connection', (ws) => {
     if (msg.type === 'ping') { ws.send(JSON.stringify({ type: 'pong' })); return; }
 
     if (msg.type === 'create') {
-      room = createRoom();
+      // 初始积分由创建者设置（100~100000），默认 500
+      const chips = Math.max(100, Math.min(100000, Math.floor(+msg.startChips) || 500));
+      room = createRoom(chips);
       pid = 'u' + pidSeq++;
       const p = room.table.addPlayer({ id: pid, name: msg.name || '玩家', isHuman: true });
       room.owner = pid;
@@ -229,6 +238,23 @@ wss.on('connection', (ws) => {
       return;
     }
 
+    if (msg.type === 'truth') {
+      // 真心话大冒险题目：一次性广播给全房间（不进快照）；限长 80、1.5 秒限频
+      const text = typeof msg.text === 'string' ? msg.text.trim().slice(0, 80) : '';
+      const kind = msg.kind === 'dare' ? 'dare' : 'truth';
+      if (!text) return;
+      const p = room.table.byId(pid);
+      if (!p) return;
+      if (Date.now() - (ws._lastTruthAt || 0) < 1500) return;
+      ws._lastTruthAt = Date.now();
+      const payload = { seq: (room.truthSeq = (room.truthSeq || 0) + 1), pid, name: p.name, kind, text, custom: !!msg.custom, id: typeof msg.id === 'string' ? msg.id.slice(0, 24) : '' };
+      const packet = JSON.stringify({ type: 'truth', truth: payload });
+      for (const [rpid, sock] of room.sockets) {
+        if (sock.readyState === 1) { try { sock.send(packet); } catch (e) {} }
+      }
+      return;
+    }
+
     if (msg.type === 'kick-bot') {
       // 有人类加入后可踢走一个 AI；中途不能踢，避免破坏当前手牌
       if (!room.table.over) return ws.send(JSON.stringify({ type: 'error', error: '本手结束后再踢走 AI' }));
@@ -276,10 +302,31 @@ wss.on('connection', (ws) => {
   ws.on('close', () => {
     if (!room || !pid) return;
     if (room.sockets.get(pid) !== ws) return; // 已被新连接接管，忽略旧连接关闭
-    const p = room.table.byId(pid);
-    if (p && !room.table.over) { p.folded = true; p.isHuman = false; }
+    const closedRoom = room, closedPid = pid;
     room.sockets.delete(pid);
-    broadcast(room);
+    // 断线后给 1.5s 重连窗口：期间同座位重连则不弃牌，避免刷新/切后台被误判弃牌
+    setTimeout(() => {
+      if (rooms.get(closedRoom.code) !== closedRoom) return;
+      if (closedRoom.sockets.get(closedPid)) return; // 已重连
+      const p = closedRoom.table.byId(closedPid);
+      if (p && !closedRoom.table.over) {
+        const cur = closedRoom.table.players[closedRoom.table.current];
+        if (cur && cur.id === closedPid) {
+          // 断线时正好轮到自己：走标准弃牌流程推进游戏，防止牌桌卡住
+          const r = closedRoom.table.act(closedPid, { type: 'fold' });
+          if (!r.ok) p.folded = true;
+        } else {
+          p.folded = true;
+        }
+        p.isHuman = false;
+        // 只剩最后一人时立即结算，避免“都弃牌后卡住”
+        if (!closedRoom.table.over && closedRoom.table.alive.length === 1) {
+          try { closedRoom.table._showdown(); } catch (e) {}
+        }
+      }
+      broadcast(closedRoom);
+      scheduleBot(closedRoom);
+    }, 1500);
     // 空房间清理（保留 10 分钟，方便移动端切换应用后重连）
     if (room.sockets.size === 0) setTimeout(() => { if (rooms.get(room.code) && room.sockets.size === 0) rooms.delete(room.code); }, 600000);
   });

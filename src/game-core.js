@@ -200,7 +200,7 @@
     constructor(opts = {}) {
       this.sb = opts.smallBlind || 10;
       this.bb = opts.bigBlind || 20;
-      this.startChips = opts.startChips || 1000;
+      this.startChips = opts.startChips || 500;
       this.maxSeats = opts.maxSeats || 4;
       this.rng = opts.rng || secureRandom;
       this.players = [];
@@ -216,6 +216,7 @@
       this.raisesThisStreet = 0;
       this.over = true;
       this.needsRunout = false;
+      this.extraCommunityFrom = -1; // 提前结束补发的公共牌起始下标（-1 表示没有补发）
       this.handNo = 0;
       this.log = [];          // 人类可读日志（{seq,msg}）
       this.logSeq = 0;        // 日志自增序号，供前端增量播报
@@ -256,6 +257,7 @@
       this.community = []; this.pot = 0; this.highBet = 0; this.minRaise = this.bb;
       this.raisesThisStreet = 0;
       this.needsRunout = false; this.current = -1;
+      this.extraCommunityFrom = -1;
       this.lastPayout = []; this.reconcileReport = null;
       this.deck = shuffle(buildDeck(), this.rng);
       this.dealer = (this.dealer + 1) % this.players.length;
@@ -296,6 +298,7 @@
       });
       this.community = []; this.pot = 0; this.highBet = 0; this.minRaise = this.bb;
       this.raisesThisStreet = 0; this.needsRunout = false; this.current = -1;
+      this.extraCommunityFrom = -1;
       this.over = true; this.lastPayout = []; this.reconcileReport = null;
       this.startSnapshot = this.players.map(p => ({ id: p.id, chips: p.chips }));
     }
@@ -478,6 +481,11 @@
       this.stage = 'showdown';
       this.needsRunout = false;
       this.current = -1;
+      // 其余玩家全部弃牌提前结束：把没发完的公共牌补出来，方便复盘；并记录从哪张开始是补发牌
+      if (this.alive.length === 1 && this.community.length < 5) {
+        this.extraCommunityFrom = this.community.length;
+        while (this.community.length < 5) this.community.push(this.deck.pop());
+      }
       const alive = this.alive;
       alive.forEach(p => { p.hand = bestHand([...p.hole, ...this.community]); });
 
@@ -567,6 +575,7 @@
         highBet: this.highBet, minRaise: this.minRaise, needsRunout: this.needsRunout,
         raisesThisStreet: this.raisesThisStreet, maxRaises: this.maxRaises,
         community: this.community.map(cardStr),
+        extraCommunityFrom: this.extraCommunityFrom,
         handNo: this.handNo,
         players: this.players.map(p => ({
           id: p.id, name: p.name, isHuman: p.isHuman, isBot: p.isBot,

@@ -18,17 +18,26 @@ function getPos(n){
   return [{x:50,y:72},{x:18,y:62},{x:50,y:18},{x:82,y:62}];
 }
 let mode=null, table=null, ws=null, myPid=null, isOwner=false, roomCode=null, pendingJoinCode=null, lastState=null;
+/* 真心话大冒险 */
+let __truthUsed=new Set();   // 当前房间已用过的题目（去重用，跨玩家共享）
+let __lastTruthSeq=0;         // 去重最后收到的 truth seq
 let reconnectTimer=null, reconnectTries=0, suppressAutoStart=false, heartbeatTimer=null, pongTimer=null, lastPongAt=0;
 const $=id=>document.getElementById(id);
 const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 function cnNum(n){const d=['零','一','二','三','四','五','六','七','八','九'];if(n<10)return d[n];if(n<20)return'十'+(n%10?cnNum(n%10):'');if(n<100){const t=Math.floor(n/10),o=n%10;return cnNum(t)+'十'+(o?cnNum(o):'');}return String(n);}
+/* 初始积分设置：默认 500，存本地；单机下一手生效，联机创建房间时生效 */
+const START_CHIPS_KEY='poker_start_chips', START_CHIPS_MIN=100, START_CHIPS_MAX=100000, START_CHIPS_DEFAULT=500;
+function clampStartChips(v){ v=Math.floor(+v); if(!v||v<START_CHIPS_MIN)v=START_CHIPS_DEFAULT; return Math.max(START_CHIPS_MIN,Math.min(START_CHIPS_MAX,v)); }
+function getStartChips(){ try{ return clampStartChips(localStorage.getItem(START_CHIPS_KEY)); }catch(e){ return START_CHIPS_DEFAULT; } }
+function setStartChips(v){ const n=clampStartChips(v); try{ localStorage.setItem(START_CHIPS_KEY,String(n)); }catch(e){} return n; }
 
 const AudioSys={
   ctx:null,master:null,sfxGain:null,bgmGain:null,bgmTimer:null,bgmTrack:0,
-  lead:{step:0,next:0},bass:{step:0,next:0},sfxOn:true,voiceOn:true,zhVoice:null,bgmEnabled:true,muted:false,
+  lead:{step:0,next:0},bass:{step:0,next:0},sfxOn:true,voiceOn:true,zhVoice:null,bgmEnabled:true,muted:false,bgmVol:0.7,
   voiceQueue:[],speaking:false,voiceUnlocked:false,voiceWarming:false,currentUtterance:null,
-  ensure(){if(this.ctx){if(this.ctx.state==='suspended')this.ctx.resume();return;}const AC=window.AudioContext||window.webkitAudioContext;if(!AC)return;this.ctx=new AC();this.master=this.ctx.createGain();this.master.connect(this.ctx.destination);this.sfxGain=this.ctx.createGain();this.sfxGain.connect(this.master);this.bgmGain=this.ctx.createGain();this.bgmGain.gain.value=0.7;this.bgmGain.connect(this.master);this.volume();this.sfxVolume();try{this.ctx.resume();}catch(e){}},
+  ensure(){if(this.ctx){if(this.ctx.state==='suspended')this.ctx.resume();return;}const AC=window.AudioContext||window.webkitAudioContext;if(!AC)return;this.ctx=new AC();this.master=this.ctx.createGain();this.master.connect(this.ctx.destination);this.sfxGain=this.ctx.createGain();this.sfxGain.connect(this.master);this.bgmGain=this.ctx.createGain();this.bgmGain.gain.value=this.bgmVol;this.bgmGain.connect(this.master);this.volume();this.sfxVolume();try{this.ctx.resume();}catch(e){}},
   volume(){const raw=$('volume').value;const v=(raw===''||isNaN(+raw)?70:+raw)/100;if(this.master)this.master.gain.value=Math.max(0,Math.min(1,v));},
+  bgmVolume(){if(this.bgmGain)this.bgmGain.gain.value=Math.max(0,Math.min(1,this.bgmVol));},
   sfxVolume(){if(!this.sfxGain)return;this.sfxGain.gain.value=0.5;}, /* 操作音效默认开启且固定音量，不再提供滑块 */
   midi(m){return 440*Math.pow(2,(m-69)/12);},
   tone(freq,dur,{type='sine',vol=0.5,when=0,slide=null,dest=null}={}){if(!this.ctx)return;const t=this.ctx.currentTime+when;const o=this.ctx.createOscillator(),g=this.ctx.createGain();o.type=type;o.frequency.setValueAtTime(freq,t);if(slide)o.frequency.exponentialRampToValueAtTime(slide,t+dur);g.gain.setValueAtTime(.0001,t);g.gain.exponentialRampToValueAtTime(vol,t+.015);g.gain.exponentialRampToValueAtTime(.0001,t+dur);o.connect(g);g.connect(dest||this.sfxGain);o.start(t);o.stop(t+dur+.05);o.onended=()=>{try{o.disconnect();g.disconnect();}catch(e){}};},
@@ -83,7 +92,7 @@ const AudioSys={
       if(timedOut){try{speechSynthesis.cancel();}catch(e){}}
       this.speaking=false;if(this.currentUtterance===u)this.currentUtterance=null;this.pumpVoice();this.notifyVoiceIdle();
     };
-    u.onend=()=>done(false);u.onerror=()=>done(false);const timer=setTimeout(()=>done(true),4000+text.length*180);
+    u.onend=()=>done(false);u.onerror=()=>done(false);const timer=setTimeout(()=>done(true),Math.min(8000,2500+text.length*120));
     try{speechSynthesis.resume();speechSynthesis.speak(u);}catch(e){done(false);}
   },
   stopVoice(){this.voiceGeneration++;if('speechSynthesis' in window){try{speechSynthesis.cancel();}catch(e){}}this.voiceQueue.length=0;this.speaking=false;this.voiceWarming=false;this.currentUtterance=null;this.notifyVoiceIdle();},
@@ -147,18 +156,24 @@ function bubbleEls(idx){ const tbl=$('table'); return tbl?tbl.querySelectorAll(`
 function mountBubble(b){
   const tbl=$('table'), seat=document.querySelector(`.seat[data-idx="${b.idx}"]`);
   if(!tbl||!seat)return;
-  bubbleEls(b.idx).forEach(e=>e.remove());
   const sr=seat.getBoundingClientRect(), tr=tbl.getBoundingClientRect();
   if(!tr.width)return;
   const ox=tbl.clientLeft, oy=tbl.clientTop; // 绝对定位相对 padding box，需扣掉边框
   const cx=sr.left-tr.left-ox+sr.width/2, cy=sr.top-tr.top-oy;
   const below=cy<tr.height*0.45;
-  const el=document.createElement('div');
-  el.className='action-bubble '+b.cls+(below?' below':'');
-  el.dataset.idx=b.idx; el.textContent=b.text;
+  // 复用已有气泡：resize（如手机键盘弹出）时只重新定位，避免移除重建造成闪烁
+  let el=bubbleEls(b.idx)[0];
+  if(el){
+    el.className='action-bubble '+b.cls+(below?' below':'');
+    el.textContent=b.text;
+  }else{
+    el=document.createElement('div');
+    el.className='action-bubble '+b.cls+(below?' below':'');
+    el.dataset.idx=b.idx; el.textContent=b.text;
+    tbl.appendChild(el);
+  }
   el.style.left=cx+'px';
   el.style.top=(below?cy+sr.height+8:cy-8)+'px';
-  tbl.appendChild(el);
   // 长文案（快捷语）可能横向溢出，夹在牌桌内
   const half=el.offsetWidth/2, pad=6;
   const maxX=tbl.clientWidth-half-pad, minX=half+pad;
@@ -191,16 +206,26 @@ function sendEmote(text){
   showEmote(emoteIndex(mode==='offline'?'me':myPid),text,true);
   if(mode==='online')send({type:'emote',text});
 }
-/* 语音留言播放：base64 → PCM，走已解锁的 AudioContext 原声播放 */
-async function playVoiceB64(b64){
+/* 语音留言播放：优先走已解锁的 AudioContext 原声播放；解码失败再回退到 <audio>，提升不同手机兼容性 */
+async function playVoiceB64(b64, mime){
+  const type=mime||'audio/webm';
   try{
     AudioSys.ensure();
-    const actx=AudioSys.ctx; if(!actx)return;
-    const bin=atob(b64);const buf=new Uint8Array(bin.length);
-    for(let i=0;i<bin.length;i++)buf[i]=bin.charCodeAt(i);
-    const audio=await actx.decodeAudioData(buf.buffer);
-    const src=actx.createBufferSource();src.buffer=audio;src.connect(actx.destination);src.start();
+    const actx=AudioSys.ctx;
+    if(actx){
+      if(actx.state==='suspended'){ try{ await actx.resume(); }catch(e){} }
+      if(actx.state==='running'){
+        const bin=atob(b64);const buf=new Uint8Array(bin.length);
+        for(let i=0;i<bin.length;i++)buf[i]=bin.charCodeAt(i);
+        const audio=await actx.decodeAudioData(buf.buffer);
+        const src=actx.createBufferSource();src.buffer=audio;
+        src.connect(AudioSys.master||actx.destination);src.start();
+        return;
+      }
+    }
   }catch(e){}
+  // 部分手机（尤其 iOS 收 webm、部分安卓收 mp4）WebAudio 解码失败，回退到 <audio> 再试一次
+  try{ const a=new Audio('data:'+type+';base64,'+b64); a.play().catch(()=>{}); }catch(e){}
 }
 
 /* ---------- 联机 ---------- */
@@ -209,10 +234,10 @@ function setConnMsg(text, ok){ const el=$('connMsg'); el.textContent=text||''; e
 function stopHeartbeat(){ if(heartbeatTimer){clearInterval(heartbeatTimer);heartbeatTimer=null;} if(pongTimer){clearInterval(pongTimer);pongTimer=null;} }
 function startHeartbeat(sock){
   stopHeartbeat(); lastPongAt=Date.now();
-  // 心跳保活：每 20s 发一次 ping，避免后台/代理空闲超时把连接静默断开
-  heartbeatTimer=setInterval(()=>{ if(sock.readyState===1){ try{sock.send(JSON.stringify({type:'ping'}));}catch(e){} } },20000);
-  // 超过 45s 没收到 pong，判定连接已死，主动关掉触发重连
-  pongTimer=setInterval(()=>{ if(mode!=='online')return; if(Date.now()-lastPongAt>45000){ try{sock.close();}catch(e){} } },5000);
+  // 心跳保活：每 15s 发一次 ping，避免后台/代理空闲超时把连接静默断开
+  heartbeatTimer=setInterval(()=>{ if(sock.readyState===1){ try{sock.send(JSON.stringify({type:'ping'}));}catch(e){} } },15000);
+  // 超过 40s 没收到 pong，判定连接已死，主动关掉触发重连
+  pongTimer=setInterval(()=>{ if(mode!=='online')return; if(Date.now()-lastPongAt>40000){ try{sock.close();}catch(e){} } },5000);
 }
 function connect(pending){
   if(location.protocol==='file:'||!location.host){setConnMsg('本地文件请运行 node server.js');return;}
@@ -239,11 +264,21 @@ function connect(pending){
       window.__lastVoiceSeq=v.seq;
       const vIdx=emoteIndex(v.pid);
       if(vIdx>=0)showEmote(vIdx,'语音 '+(v.dur/1000).toFixed(1)+'秒',false);
-      if(v.pid!==myPid)playVoiceB64(v.data);
+      if(v.pid!==myPid)playVoiceB64(v.data,v.mime);
     }
     if(msg.type==='voice-ack'){
       const n=msg.count|0;
       showEmote(emoteIndex(myPid),n>0?('语音已送达'+cnNum(n)+'位玩家'):'没有其他在线玩家收到语音',false);
+    }
+    if(msg.type==='truth'){
+      const t=msg.truth||{};
+      if(!t.seq||t.seq===window.__lastTruthSeq)return;
+      window.__lastTruthSeq=t.seq;
+      // 标记为已用过，后续抽题不再重复
+      markTruthUsed(t);
+      AudioSys.unlock();
+      showTruthCard(t.kind,t.text);
+      speakTruth(t);
     }
     if(msg.type==='room'){ myPid=msg.pid;isOwner=msg.owner===msg.pid;roomCode=msg.code;reconnectTries=0;onJoined(); }
     else if(msg.type==='state'){
@@ -289,7 +324,7 @@ async function copyText(text){
 async function copyInvite(btn){ const ok=await copyText(inviteUrl()); if(!ok){ $('message').textContent='复制失败，请长按邀请码手动复制：'+inviteUrl(); return false; } if(btn){ const old=btn.dataset.label||btn.textContent; btn.dataset.label=old; btn.textContent='✓ 已复制'; btn.classList.add('copied'); setTimeout(()=>{ btn.textContent=old; btn.classList.remove('copied'); },1600); } $('message').textContent='邀请链接已复制，发给好友即可加入房间 '+roomCode; return true; }
 
 /* ---------- 单机 ---------- */
-function startOffline(){ mode='offline'; table=new Core.Table({maxSeats:4}); const nick=$('nick').value.trim()||'玩家'; table.addPlayer({id:'me',name:nick,isHuman:true}); table.addPlayer({id:'b1',name:'AI·稳健',isBot:true,personality:0}); table.addPlayer({id:'b2',name:'AI·凶猛',isBot:true,personality:2}); table.addPlayer({id:'b3',name:'AI·机灵',isBot:true,personality:1}); $('menu').style.display='none';$('tableWrap').style.display='grid'; startHandOffline(); }
+function startOffline(){ mode='offline'; table=new Core.Table({maxSeats:4,startChips:getStartChips()}); const nick=$('nick').value.trim()||'玩家'; table.addPlayer({id:'me',name:nick,isHuman:true}); table.addPlayer({id:'b1',name:'AI·稳健',isBot:true,personality:0}); table.addPlayer({id:'b2',name:'AI·凶猛',isBot:true,personality:2}); table.addPlayer({id:'b3',name:'AI·机灵',isBot:true,personality:1}); $('menu').style.display='none';$('tableWrap').style.display='grid'; startHandOffline(); }
 function botDecide(t,p){ return Core.botDecide(t,p); }
 
 /* 单机调度会等待当前语音和气泡播完，再允许下一次行动或发牌。 */
@@ -341,7 +376,7 @@ function scheduleOfflineBot(){
 function doAction(action){ AudioSys.ensure(); if(mode==='online'){send({type:'action',action});return;} if(!table||presenting)return;const r=table.act('me',action); if(r.ok){lastState=table.snapshot('me');render();scheduleOfflineBot();} }
 
 /* ---------- 渲染 ---------- */
-function strCardHTML(s,down){ if(down)return'<div class="card back"></div>'; const m=s.match(/([0-9]+|J|Q|K|A)([♠♥♦♣])/); const red=m[2]==='♥'||m[2]==='♦'; return`<div class="card ${red?'red':''}"><span>${m[1]}</span><span class="s">${m[2]}</span></div>`; }
+function strCardHTML(s,down,extra){ if(down)return'<div class="card back"></div>'; const m=s.match(/([0-9]+|J|Q|K|A)([♠♥♦♣])/); const red=m[2]==='♥'||m[2]==='♦'; return`<div class="card ${red?'red':''}${extra?' extra':''}"><span>${m[1]}</span><span class="s">${m[2]}</span></div>`; }
 
 const wait=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 function updateFocus(){
@@ -442,7 +477,7 @@ function render(){
   });
   restoreBubble();
   $('community').innerHTML=st.community.length
-    ? st.community.map(c=>strCardHTML(c,false)).join('')
+    ? st.community.map((c,i)=>strCardHTML(c,false,st.extraCommunityFrom>=0&&i>=st.extraCommunityFrom)).join('')
     : '<div class="card empty"></div>'.repeat(5);
   const wonTotal=st.over&&st.payout?st.payout.reduce((s,x)=>s+(x.amount||0),0):0;
   $('pot').textContent=st.over&&wonTotal?('本手奖池 '+wonTotal):('奖池 '+st.pot);
@@ -525,11 +560,12 @@ function ensureChatRow(box){
   box.recBar.innerHTML='<span class="rec-dot"></span><span class="rec-time">0.0s / 20s</span><span class="rec-hint">松手发送</span>';
   box.chatRow.appendChild(box.micBtn); box.chatRow.appendChild(box.chatInput); box.chatRow.appendChild(box.chatSend); box.chatRow.appendChild(box.recBar);
   box.parentElement.appendChild(box.chatRow);
-  const toggleChat=show=>{ box.chatInput.style.display=show?'':'none'; box.chatSend.style.display=show?'':'none'; box.recBar.style.display='none'; if(show)setTimeout(()=>box.chatInput.focus(),0); else box.chatInput.value=''; };
+  let openedAt=0;
+  const toggleChat=show=>{ box.chatInput.style.display=show?'':'none'; box.chatSend.style.display=show?'':'none'; box.recBar.style.display='none'; if(show){openedAt=Date.now();setTimeout(()=>box.chatInput.focus(),0);} else box.chatInput.value=''; };
   let pressTimer=null,recorder=null,recChunks=[],recStart=0,recTick=null,recording=false,recDiscard=false,pressed=false;
   const REC_MAX=20000;
   const chatToast=text=>showEmote(emoteIndex(mode==='offline'?'me':myPid),text,false);
-  const recUI=on=>{ box.recBar.style.display=on?'':'none'; box.chatInput.style.display='none'; box.chatSend.style.display='none'; box.chatInput.value=''; box.micBtn.classList.toggle('rec-on',on); };
+  const recUI=on=>{ box.recBar.style.display=on?'':'none'; box.chatInput.style.display='none'; box.chatSend.style.display='none'; box.chatInput.value=''; box.micBtn.classList.toggle('rec-on',on); box.chatRow.classList.toggle('rec-active',on); };
   const startRec=async()=>{
     if(recording)return;
     if(mode!=='online'){chatToast('语音留言仅联机房间可用');return;}
@@ -556,7 +592,7 @@ function ensureChatRow(box){
           if(b64.length>240000){chatToast('语音过长，发送失败');return;}
           send({type:'voice',mime:blob.type,dur,data:b64});
           showEmote(emoteIndex(myPid),'语音 '+(dur/1000).toFixed(1)+'秒',false);
-          playVoiceB64(b64);
+          playVoiceB64(b64,blob.type);
         };
         r.readAsDataURL(blob);
       };
@@ -580,6 +616,25 @@ function ensureChatRow(box){
     try{recorder.stop();}catch(e){}
   };
   box.micBtn.addEventListener('contextmenu',e=>e.preventDefault());
+  // 兜底：手指在按钮外松开、系统手势打断、切后台时，强制结束长按/录音，避免一直红色录音
+  const releasePress=()=>{
+    pressed=false;
+    if(pressTimer){ clearTimeout(pressTimer);pressTimer=null; }
+    if(recording) stopRec(false);
+  };
+  const cancelPress=()=>{
+    pressed=false;
+    if(pressTimer){ clearTimeout(pressTimer);pressTimer=null; }
+    if(recording) stopRec(true);
+  };
+  window.__chatRelease=releasePress; window.__chatCancel=cancelPress;
+  if(!window.__chatGlobalBound){
+    window.__chatGlobalBound=true;
+    // 用冒泡阶段：按钮自身 pointerup 先处理，这里只兜底“松手没落在按钮上”的情况
+    document.addEventListener('pointerup',()=>{ try{ window.__chatRelease&&window.__chatRelease(); }catch(e){} });
+    document.addEventListener('pointercancel',()=>{ try{ window.__chatCancel&&window.__chatCancel(); }catch(e){} });
+    window.addEventListener('blur',()=>{ try{ window.__chatCancel&&window.__chatCancel(); }catch(e){} });
+  }
   box.micBtn.onpointerdown=e=>{
     if(e.button===2)return;
     pressed=true;
@@ -600,7 +655,17 @@ function ensureChatRow(box){
   };
   box.chatSend.onclick=sendChat;
   box.chatInput.onkeydown=e=>{ if(e.key==='Enter'){e.preventDefault();sendChat();} };
-  box.parentElement.addEventListener('click',e=>{ if(box.chatInput.style.display!=='none'&&!box.chatRow.contains(e.target))toggleChat(false); });
+  // 点牌桌空白收起输入框；只绑定一次，且刚展开的 450ms 内不收起（部分安卓机会在松开后补发 click，导致闪现又折叠）
+  const tableEl=box.parentElement;
+  if(!tableEl.__chatCollapseBound){
+    tableEl.__chatCollapseBound=true;
+    tableEl.addEventListener('click',e=>{
+      if(!box.chatRow||box.chatInput.style.display==='none')return;
+      if(box.chatRow.contains(e.target))return;
+      if(Date.now()-openedAt<450)return;
+      toggleChat(false);
+    });
+  }
 }
 function renderControls(st){
   const box=$('controls');
@@ -670,7 +735,7 @@ function renderControls(st){
 /* ---------- 事件绑定 ---------- */
 function audioWake(){ AudioSys.ensure(); AudioSys.startBGM(parseInt($('bgmSelect').value)); }
 $('btnOffline').onclick=()=>{ audioWake(); startOffline(); };
-$('btnCreate').onclick=()=>{ mode='online'; audioWake(); connect({type:'create',name:$('nick').value.trim()||'玩家'}); };
+$('btnCreate').onclick=()=>{ mode='online'; audioWake(); connect({type:'create',name:$('nick').value.trim()||'玩家',startChips:getStartChips()}); };
 $('btnJoin').onclick=()=>{ mode='online'; audioWake(); connect({type:'join',code:$('roomCode').value.trim(),name:$('nick').value.trim()||'玩家'}); };
 $('btnNewHand').onclick=()=>{ detailOpen=false; newHand(); };
 /* 有人破产游戏结束 → 重新开始：所有玩家积分清零；否则正常开下一手（保留积分） */
@@ -687,7 +752,9 @@ $('btnExport').onclick=()=>{ const ev=mode==='offline'?table.events:(lastState&&
 const bindBoth=(el,fn)=>{['input','change'].forEach(ev=>el.addEventListener(ev,fn));};
 const applyBGM=val=>{ AudioSys.ensure(); AudioSys.startBGM(parseInt(val)||0); const a=$('bgmSelect'),b=$('bgmModalSelect'); if(a)a.value=val; if(b)b.value=val; };
 const applyVoice=on=>{ AudioSys.voiceOn=on; const a=$('voiceToggle'),b=$('voiceModalToggle'); if(a)a.checked=on; if(b)b.checked=on; if(on){AudioSys.unlock();AudioSys.pumpVoice();}else AudioSys.stopVoice(); };
-const applyVol=val=>{ const a=$('volume'),b=$('volumeModal'); if(a)a.value=val; if(b)b.value=val; AudioSys.ensure(); AudioSys.volume(); AudioSys.muted=false; const mb=$('btnBgm'); if(mb){mb.style.opacity='';mb.style.textDecoration='';} };
+const applyVol=val=>{ const a=$('volume'); if(a)a.value=val; AudioSys.ensure(); AudioSys.volume(); AudioSys.muted=false; const mb=$('btnBgm'); if(mb){mb.style.opacity='';mb.style.textDecoration='';} };
+/* 音乐弹窗里的滑块只控制背景音乐音量，不再动总音量 */
+const applyBgmVol=val=>{ const n=Math.max(0,Math.min(100,Math.round(+val||0))); const b=$('volumeModal'); if(b)b.value=n; AudioSys.ensure(); AudioSys.bgmVol=n/100; AudioSys.bgmVolume(); };
 const applyBgmEnabled=on=>{ AudioSys.bgmEnabled=on; if(on)AudioSys.startBGM(parseInt($('bgmModalSelect').value)||parseInt($('bgmSelect').value)||0); else AudioSys.stopBGM(); const c=$('bgmModalToggle'); if(c)c.checked=on; };
 bindBoth($('bgmSelect'),e=>applyBGM(e.target.value));
 bindBoth($('voiceToggle'),e=>applyVoice(e.target.checked));
@@ -696,7 +763,7 @@ bindBoth($('volume'),e=>applyVol(e.target.value));
 function openModal(id){ $(id).style.display='flex'; }
 function closeModal(id){ $(id).style.display='none'; }
 document.querySelectorAll('.modal-overlay').forEach(ov=>{ ov.addEventListener('click',e=>{ if(e.target===ov) ov.style.display='none'; }); });
-document.querySelectorAll('.modal-close').forEach(b=>{ b.onclick=()=>closeModal(b.dataset.close); });
+document.querySelectorAll('[data-close]').forEach(b=>{ b.onclick=()=>closeModal(b.dataset.close); });
 /* 音乐按钮：单击开弹窗；短时双击=整体静音，再双击恢复 */
 let bgmClickAt=0,bgmClickTimer=null;
 $('btnBgm').onclick=()=>{
@@ -711,9 +778,31 @@ $('btnBgm').onclick=()=>{
     return;
   }
   bgmClickAt=now;
-  bgmClickTimer=setTimeout(()=>{ bgmClickTimer=null;bgmClickAt=0; $('bgmModalSelect').value=$('bgmSelect').value; $('voiceModalToggle').checked=AudioSys.voiceOn; const tc=$('bgmModalToggle'); if(tc)tc.checked=AudioSys.bgmEnabled!==false; $('volumeModal').value=$('volume').value; openModal('bgmModal'); },330);
+  bgmClickTimer=setTimeout(()=>{ bgmClickTimer=null;bgmClickAt=0; $('bgmModalSelect').value=$('bgmSelect').value; $('voiceModalToggle').checked=AudioSys.voiceOn; const tc=$('bgmModalToggle'); if(tc)tc.checked=AudioSys.bgmEnabled!==false; $('volumeModal').value=Math.round(AudioSys.bgmVol*100); openModal('bgmModal'); },330);
 };
-$('btnHelp').onclick=()=>openModal('helpModal');
+/* 设置弹窗：教程 / 设置 两个选项卡；设置里可改初始积分（默认 500） */
+let setupInited=false, setupTab='settings';
+function initSetupUI(){
+  if(setupInited)return; setupInited=true;
+  const tabs=[...document.querySelectorAll('#setupTabs .emote-tab')];
+  const applyTab=id=>{
+    setupTab=id;
+    tabs.forEach(t=>t.classList.toggle('active',t.dataset.tab===id));
+    const g=$('setupGuide'),s=$('setupSettings');
+    if(g)g.style.display=id==='settings'?'none':'';
+    if(s)s.style.display=id==='settings'?'':'none';
+  };
+  tabs.forEach(t=>{ t.onclick=()=>applyTab(t.dataset.tab); });
+  const input=$('startChipsInput');
+  if(input){
+    input.value=getStartChips();
+    const save=()=>{ input.value=setStartChips(input.value); };
+    input.addEventListener('change',save);
+    input.addEventListener('blur',save);
+  }
+  applyTab(setupTab);
+}
+$('btnHelp').onclick=()=>{ initSetupUI(); const i=$('startChipsInput'); if(i)i.value=getStartChips(); openModal('helpModal'); };
 $('btnEmote').onclick=()=>{
   const box=$('emoteList');
   if(!box.dataset.init){
@@ -740,7 +829,123 @@ $('btnKickBot').onclick=()=>{ AudioSys.unlock(); send({type:'kick-bot'}); };
 bindBoth($('bgmModalSelect'),e=>applyBGM(e.target.value));
 bindBoth($('voiceModalToggle'),e=>applyVoice(e.target.checked));
 bindBoth($('bgmModalToggle'),e=>applyBgmEnabled(e.target.checked));
-bindBoth($('volumeModal'),e=>applyVol(e.target.value));
+bindBoth($('volumeModal'),e=>applyBgmVol(e.target.value));
+
+/* ---------- 真心话大冒险 ---------- */
+let __truthTab='truth';
+function markTruthUsed(t){ if(!t)return; if(t.custom||!t.id) __truthUsed.add('c:'+(t.text||'')); else __truthUsed.add(t.id); }
+function mySeatIdx(){ return emoteIndex(mode==='offline'?'me':myPid); }
+
+/* 内容字号自适应：默认尽量大，超出卡面留白（标题下方安全区）时逐级缩小 */
+function fitTruthText(card){
+  const t=card&&card.querySelector('.tc-text');
+  const q=t&&t.querySelector('.tc-q');
+  if(!q)return;
+  let size=innerHeight<=560?17:22;
+  t.style.fontSize=size+'px';
+  let guard=0;
+  while(q.offsetHeight>t.clientHeight&&size>11&&guard++<24){
+    size-=1; t.style.fontSize=size+'px';
+  }
+}
+
+/* 中央浮层：扑克牌样式（真心话/大冒险两张底图）+ 翻牌动画 + 操作按钮 */
+function showTruthCard(kind,text){
+  const overlay=$('truthOverlay'), card=$('truthCard');
+  if(!overlay||!card)return;
+  const isDare=kind==='dare';
+  card.className='truth-card '+(isDare?'dare':'truth');
+  const btns=isDare
+    ? `<button class="btn-dare" data-act="dare-ok">已完成</button>`
+    : `<button class="btn-answer" data-act="truth-answer">回答</button>
+       <button class="btn-dare" data-act="truth-dare">认罚</button>`;
+  // 每次重建 tc-inner，让翻牌动画重新播放
+  card.innerHTML=
+    `<button class="tc-x" data-act="dismiss" aria-label="关闭">✕</button>
+     <div class="tc-inner">
+       <div class="tc-face tc-back"></div>
+       <div class="tc-face tc-front"><div class="tc-text"><span class="tc-q">${esc(text)}</span></div></div>
+     </div>
+     <div class="tc-btns">${btns}</div>`;
+  overlay.style.display='flex';
+  fitTruthText(card);
+  card.querySelectorAll('[data-act]').forEach(b=>{
+    b.onclick=()=>{
+      const act=b.dataset.act;
+      if(act==='truth-answer'){
+        showEmote(mySeatIdx(),'回答了这道真心话',false);
+        hideTruthCard();
+      }else if(act==='truth-dare'){
+        // 认罚：随机抽一道大冒险
+        AudioSys.unlock();
+        const picked=TruthDeck.drawOne(TruthDeck.DARE_DECK,__truthUsed);
+        hideTruthCard();
+        if(picked) sendTruth('dare',picked.text,picked.id,false);
+      }else if(act==='dare-ok'){
+        showEmote(mySeatIdx(),'完成了大冒险！',false);
+        hideTruthCard();
+      }else{
+        hideTruthCard();
+      }
+    };
+  });
+}
+function hideTruthCard(){ const o=$('truthOverlay'); if(o)o.style.display='none'; }
+
+/* 语音播报：复用已有中文 TTS 链路 */
+function speakTruth(t){
+  const label=t.kind==='dare'?'大冒险':'真心话';
+  AudioSys.speak(label+'，'+t.text);
+}
+
+/* 联机时广播题目；单机本地直接展示 */
+function sendTruth(kind,text,id,custom){
+  const item={kind,text,id:id||'',custom:!!custom};
+  if(mode==='online'){ send({type:'truth',kind:item.kind,text:item.text,id:item.id,custom:item.custom}); return; }
+  markTruthUsed(item);
+  AudioSys.unlock();
+  showTruthCard(item.kind,item.text);
+  speakTruth(item);
+}
+
+/* 渲染抽题弹窗：按当前选项卡列出题目，已用过的置灰 */
+function renderTruthModal(){
+  const list=$('truthList'); if(!list)return;
+  list.innerHTML='';
+  const deck=__truthTab==='dare'?TruthDeck.DARE_DECK:TruthDeck.TRUTH_DECK;
+  deck.forEach(item=>{
+    const used=__truthUsed.has(item.id);
+    const b=document.createElement('button');
+    b.type='button';
+    b.className='truth-item'+(used?' used':'');
+    b.textContent=item.text;
+    b.onclick=()=>{ closeModal('truthModal'); sendTruth(__truthTab,item.text,item.id,false); };
+    list.appendChild(b);
+  });
+  document.querySelectorAll('#truthTabs .truth-tab').forEach(tb=>{
+    tb.classList.toggle('active',tb.dataset.tab===__truthTab);
+  });
+}
+document.querySelectorAll('#truthTabs .truth-tab').forEach(tb=>{
+  tb.onclick=()=>{ __truthTab=tb.dataset.tab; renderTruthModal(); };
+});
+$('btnTruth').onclick=()=>{ AudioSys.unlock(); renderTruthModal(); openModal('truthModal'); };
+$('truthRandomBtn')?.addEventListener('click',()=>{
+  const deck=__truthTab==='dare'?TruthDeck.DARE_DECK:TruthDeck.TRUTH_DECK;
+  const picked=TruthDeck.drawOne(deck,__truthUsed);
+  if(!picked) return;
+  closeModal('truthModal');
+  sendTruth(__truthTab,picked.text,picked.id,false);
+});
+$('truthCustomSend')?.addEventListener('click',()=>{
+  const input=$('truthCustomInput'); if(!input)return;
+  const text=input.value.trim().slice(0,60);
+  if(!text){ input.focus(); return; }
+  input.value='';
+  closeModal('truthModal');
+  sendTruth(__truthTab,text,'',true);
+});
+$('truthCustomInput')?.addEventListener('keydown',e=>{ if(e.key==='Enter'){ e.preventDefault(); $('truthCustomSend').click(); } });
 
 let resizeTimer=null;
 window.addEventListener('resize',()=>{ clearTimeout(resizeTimer); resizeTimer=setTimeout(()=>{ if(lastState) render(); },200); });
@@ -764,19 +969,6 @@ document.addEventListener('visibilitychange',()=>{
 (function(){
   try{ const saved=localStorage.getItem('poker_nick'); if(saved)$('nick').value=saved; }catch(e){}
   $('nick').addEventListener('change',e=>{ try{ localStorage.setItem('poker_nick',e.target.value.trim()); }catch(err){} });
-  // 昵称候选下拉：自定义实现，替代部分手机不显示的 <datalist>
-  const NICK_OPTS=['赌神','赌后','赌王','赌圣','扑克王子','扑克公主','梭哈哥','梭哈姐','偷鸡姐','黑桃皇后'];
-  const nickInput=$('nick'), nickDd=$('nickDropdown');
-  if(nickInput&&nickDd){
-    nickDd.innerHTML=NICK_OPTS.map(n=>`<button type="button" class="nick-opt">${esc(n)}</button>`).join('');
-    const showDd=()=>{ nickDd.style.display='block'; };
-    const hideDd=()=>{ nickDd.style.display='none'; };
-    nickInput.addEventListener('focus',showDd);
-    nickInput.addEventListener('click',showDd);
-    nickInput.addEventListener('input',hideDd); // 开始输入自定义昵称时收起候选，避免遮挡下方按钮
-    nickDd.addEventListener('pointerdown',e=>{ const b=e.target.closest('.nick-opt'); if(!b)return; e.preventDefault(); nickInput.value=b.textContent; try{ localStorage.setItem('poker_nick',nickInput.value.trim()); }catch(err){} hideDd(); nickInput.blur(); });
-    document.addEventListener('pointerdown',e=>{ if(!nickDd.contains(e.target)&&e.target!==nickInput) hideDd(); });
-  }
   const q=new URLSearchParams(location.search); const r=q.get('room');
   if(!r) return;
   const code=r.toUpperCase();

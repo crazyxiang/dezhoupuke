@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
 <title>李无邪欢乐牌局</title>
-<link rel="stylesheet" href="/style.css?v=20261126j">
+<link rel="stylesheet" href="/style.css?v=20261129a">
 </head>
 <body>
 <h1>♠ 李无邪欢乐牌局 ♥</h1>
@@ -14,21 +14,8 @@
   <h2>加入对局</h2>
   <label>你的昵称</label>
   <div class="nick-wrap">
-    <input id="nick" maxlength="10" placeholder="输入昵称（点我快速选）" autocomplete="off">
-    <div class="nick-dropdown" id="nickDropdown" style="display:none"></div>
+    <input id="nick" maxlength="10" placeholder="输入昵称" autocomplete="off">
   </div>
-  <datalist id="nickList">
-    <option value="赌神">
-    <option value="赌后">
-    <option value="赌王">
-    <option value="赌圣">   
-    <option value="扑克王子">
-    <option value="扑克公主">
-    <option value="梭哈哥">
-    <option value="梭哈姐">
-    <option value="黑桃皇后">
-
-  </datalist>
   <div class="row">
     <button class="btn-call" id="btnOffline">单机练习（AI 陪练）</button>
   </div>
@@ -45,11 +32,13 @@
 <div class="wrap" id="tableWrap" style="display:none">
   <div class="maincol">
     <div class="table-tools">
-      <button class="tool-btn" id="btnInvite" style="display:none">邀请</button>
       <button class="tool-btn" id="btnEmote">快捷语</button>
+      <button class="tool-btn" id="btnTruth">提问</button>
       <button class="tool-btn" id="btnKickBot" style="display:none">踢走AI</button>
       <button class="tool-btn" id="btnBgm">音乐</button>
-      <button class="tool-btn" id="btnHelp">教程</button>
+      <button class="tool-btn" id="btnHelp">设置</button>
+      <button class="tool-btn" id="btnInvite" style="display:none">邀请</button>
+     
     </div>
     <div class="table" id="table">
       <div class="center">
@@ -59,6 +48,9 @@
         <div class="stage" id="stage">准备开始</div>
       </div>
       <div class="controls" id="controls"></div>
+      <div class="truth-overlay" id="truthOverlay" style="display:none">
+        <div class="truth-card" id="truthCard"></div>
+      </div>
       <div class="result-overlay" id="resultOverlay" style="display:none"></div>
     </div>
   </div>
@@ -147,34 +139,46 @@
       <label class="switch"><input type="checkbox" id="voiceModalToggle" checked> 语音播报</label>
     </div>
     <div class="audio-row">
-      <span>总音量</span>
+      <span>背景音乐音量</span>
       <input type="range" id="volumeModal" min="0" max="100" value="70">
     </div>
     <button class="secondary modal-close" data-close="bgmModal">关闭</button>
   </div>
 </div>
 
-<!-- 教程弹窗：牌型大小 + 玩法说明 -->
+<!-- 设置弹窗：教程 / 设置 两个选项卡 -->
 <div class="modal-overlay" id="helpModal" style="display:none">
-  <div class="modal-panel">
-    <div class="modal-title">教程</div>
-    <div class="ranklist">
-      <div><span>同花顺</span><span>8</span></div>
-      <div><span>四条</span><span>7</span></div>
-      <div><span>葫芦</span><span>6</span></div>
-      <div><span>同花</span><span>5</span></div>
-      <div><span>顺子</span><span>4</span></div>
-      <div><span>三条</span><span>3</span></div>
-      <div><span>两对</span><span>2</span></div>
-      <div><span>一对</span><span>1</span></div>
-      <div><span>高牌</span><span>0</span></div>
+  <div class="modal-panel setup-panel">
+    <div class="emote-tabs" id="setupTabs">
+      <button type="button" class="emote-tab active" data-tab="guide">教程</button>
+      <button type="button" class="emote-tab" data-tab="settings">设置</button>
     </div>
-    <ul class="rules">
-      <li>每人 2 张底牌，桌面 5 张公共牌，7 选 5 比大小。</li>
-      <li>四轮行动：翻牌前 → 翻牌 → 转牌 → 河牌。</li>
-      <li>支持主池/边池：梭哈玩家只能赢自己有资格的奖池。</li>
-      <li>每手结束后台自动对账：积分守恒、奖池清零、派奖资格与牌型。</li>
-    </ul>
+    <div class="setup-body" id="setupGuide">
+      <div class="ranklist">
+        <div><span>同花顺</span><span>8</span></div>
+        <div><span>四条</span><span>7</span></div>
+        <div><span>葫芦</span><span>6</span></div>
+        <div><span>同花</span><span>5</span></div>
+        <div><span>顺子</span><span>4</span></div>
+        <div><span>三条</span><span>3</span></div>
+        <div><span>两对</span><span>2</span></div>
+        <div><span>一对</span><span>1</span></div>
+        <div><span>高牌</span><span>0</span></div>
+      </div>
+      <ul class="rules">
+        <li>每人 2 张底牌，桌面 5 张公共牌，7 选 5 比大小。</li>
+        <li>四轮行动：翻牌前 → 翻牌 → 转牌 → 河牌。</li>
+        <li>支持主池/边池：梭哈玩家只能赢自己有资格的奖池。</li>
+        <li>每手结束后台自动对账：积分守恒、奖池清零、派奖资格与牌型。</li>
+      </ul>
+    </div>
+    <div class="setup-body" id="setupSettings" style="display:none">
+      <div class="audio-row">
+        <span>初始积分</span>
+        <input type="number" id="startChipsInput" min="100" max="100000" step="100" value="500">
+      </div>
+      <div class="hint">单机下一手生效；联机在创建房间时生效（加入者跟随房主设置）。</div>
+    </div>
     <button class="secondary modal-close" data-close="helpModal">关闭</button>
   </div>
 </div>
@@ -182,7 +186,6 @@
 <!-- 快捷语弹窗 -->
 <div class="modal-overlay" id="emoteModal" style="display:none">
   <div class="modal-panel">
-    <div class="modal-title">快捷语</div>
     <div class="emote-tabs" id="emoteTabs">
       <button type="button" class="emote-tab active" data-tab="win">赢了</button>
       <button type="button" class="emote-tab" data-tab="lose">不服</button>
@@ -198,8 +201,31 @@
   </div>
 </div>
 
-<script src="/src/game-core.js?v=20261126d"></script>
-<script src="/app.js?v=20261126p"></script>
+<!-- 真心话大冒险弹窗 -->
+<div class="modal-overlay" id="truthModal" style="display:none">
+  <div class="modal-panel truth-panel">
+  
+    <div class="truth-tabs" id="truthTabs">
+      <button type="button" class="truth-tab active" data-tab="truth">真心话</button>
+      <button type="button" class="truth-tab" data-tab="dare">大冒险</button>
+    </div>
+    <div class="truth-custom-row">
+      <input id="truthCustomInput" type="text" maxlength="60" placeholder="自己输入一道题…" autocomplete="off">
+      <button type="button" class="truth-use" id="truthCustomSend">使用</button>
+    </div>
+    <div class="truth-list-wrap">
+      <div class="truth-list" id="truthList"></div>
+    </div>
+    <div class="truth-draw-row">
+      <button type="button" class="truth-draw" id="truthRandomBtn">🎲 随机抽一题</button>
+      <button type="button" class="truth-draw" data-close="truthModal">关闭</button>
+    </div>
+  </div>
+</div>
+
+<script src="/src/game-core.js?v=20261129a"></script>
+<script src="/src/truth-deck.js"></script>
+<script src="/app.js?v=20261129a"></script>
 <script>
 var _hmt = _hmt || [];
 (function() {
